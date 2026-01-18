@@ -1,93 +1,130 @@
-# Remote Backups Whmcs Module
+# Remote Backups WHMCS Module
 
+WHMCS integration module for resellers of [remote-backups.com](https://remote-backups.com/).
 
+This module allows hosting providers and MSPs to offer managed backup storage to their customers. It connects to the remote-backups.com API and handles automatic provisioning, usage tracking, and billing integration.
 
-## Getting started
+Developed by [Nerdscave Hosting](https://www.nerdscave-hosting.com/)
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+## Features
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+- Automatic datastore provisioning when customers order backup storage
+- Hourly usage tracking for accurate billing based on actual storage consumption
+- Configurable pricing per 1000 GB with minimum and maximum size limits
+- Admin dashboard showing all datastores, connection status, and usage statistics
+- Client area integration displaying storage usage and connection credentials
 
-## Add your files
+## How It Works
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+The module consists of two components: an addon module for configuration and administration, and a server module for automatic provisioning.
 
-```
-cd existing_repo
-git remote add origin https://git.minerswin.de/nerdscave-hosting/remote-backups-whmcs-module.git
-git branch -M main
-git push -uf origin main
-```
+### Addon Module
 
-## Integrate with your tools
+The addon module provides the admin interface and handles all configuration. When activated, it creates two database tables: one for mapping datastores to WHMCS services, and one for recording size changes over time.
 
-- [ ] [Set up project integrations](https://git.minerswin.de/nerdscave-hosting/remote-backups-whmcs-module/-/settings/integrations)
+Administrators configure their API token, set the price per 1000 GB, and define minimum and maximum datastore sizes. The dashboard displays all datastores from the remote-backups.com account, including current size, usage percentage, and links to associated WHMCS services.
 
-## Collaborate with your team
+### Server Module
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+The server module handles automatic provisioning. When a customer orders a product using this module, WHMCS calls the CreateAccount function which creates a new datastore via the API. The datastore ID is stored in the database and linked to the WHMCS service.
 
-## Test and Deploy
+When a service is terminated, the module deletes the associated datastore. Upgrades and downgrades trigger a resize operation through the API.
 
-Use the built-in continuous integration in GitLab.
+### Hourly Usage Tracking
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+Remote-backups.com supports autoscaling, meaning datastore sizes can change automatically based on usage. To support accurate billing, the module includes a cron script that runs hourly. It queries all datastores from the API and compares their current size to the last recorded size. When a size change is detected, a new entry is written to the history table with a timestamp.
 
-***
+This allows billing calculations based on actual usage. For example, if a datastore was 500 GB for 200 hours and 1000 GB for 520 hours in a billing period, the invoice can reflect the prorated cost for each size tier.
 
-# Editing this README
+## Requirements
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
-
-## Suggestions for a good README
-
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
-
-## Name
-Choose a self-explaining name for your project.
-
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
-
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+- WHMCS 8.0 or higher
+- PHP 8.0 or higher with cURL extension
+- A reseller account at remote-backups.com with API access
 
 ## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+### Step 1: Upload Files
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+Copy the module directories to your WHMCS installation:
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+```
+modules/addons/remotebackups/    -> /path/to/whmcs/modules/addons/remotebackups/
+modules/servers/remotebackups/   -> /path/to/whmcs/modules/servers/remotebackups/
+```
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+### Step 2: Activate the Addon
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+Go to Setup, then Addon Modules. Find Remote Backups in the list and click Activate. Click Configure and enter:
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+- Your API token from remote-backups.com
+- The monthly price per 1000 GB in your default currency
+- Minimum datastore size in GB (customers cannot order smaller)
+- Maximum datastore size in GB (customers cannot order larger)
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+### Step 3: Configure the Cron
+
+Add the following line to your crontab to enable hourly usage tracking:
+
+```
+0 * * * * php -q /path/to/whmcs/modules/addons/remotebackups/cron.php
+```
+
+### Step 4: Create a Product
+
+Go to Setup, then Products/Services, then Products/Services. Create a new product and under Module Settings, select Remote Backups. Configure:
+
+- Datastore Size (GB): The size of the datastore for this product
+- Name Prefix: A prefix for datastore names, for example "backup"
+
+The module will create datastores named like "backup-client123-service456" to ensure uniqueness.
+
+## API Endpoints
+
+The module uses the following endpoints from the remote-backups.com API:
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| GET | /reseller/datastore | List all datastores |
+| POST | /reseller/datastore | Create a new datastore |
+| GET | /reseller/datastore/:id | Get datastore details |
+| PATCH | /reseller/datastore/:id | Resize a datastore |
+| DELETE | /reseller/datastore/:id | Delete a datastore |
+
+Sizes are transmitted in GB directly. The API returns sizes in bytes, which the module converts back to GB for display.
+
+Size constraints: minimum 500 GB, increments of 100 GB.
+
+## Database Tables
+
+The module creates two tables on activation:
+
+**mod_remotebackups_datastores**: Maps datastore IDs from remote-backups.com to WHMCS service IDs. Also stores the current size for quick reference.
+
+**mod_remotebackups_size_history**: Records size changes with timestamps. Only stores entries when a size change is detected, not every hour.
+
+## Troubleshooting
+
+### Connection Failed
+
+Check that your API token is correct. Go to Addons, then Remote Backups, then click Test Connection to verify.
+
+### Products Page Error
+
+If you see an error about a missing file when opening the products page, ensure the module files are in the correct location. The server module at `/modules/servers/remotebackups/` must be able to access the addon module at `/modules/addons/remotebackups/`.
+
+### Provisioning Fails
+
+Check the module log in Utilities, then Logs, then Module Log. The module logs all API requests and responses for debugging.
 
 ## License
-For open source projects, say how it is licensed.
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+GPL-3.0-or-later
+
+Copyright 2026 Moritz Mantel / Nerdscave Hosting
+
+## Links
+
+- [Nerdscave Hosting](https://www.nerdscave-hosting.com/)
+- [remote-backups.com](https://remote-backups.com/)
+- [remote-backups.com Documentation](https://docs-next.bennetg.de/products/remote-backups/remote_configuration)
