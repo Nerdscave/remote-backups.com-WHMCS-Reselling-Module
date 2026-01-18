@@ -261,12 +261,13 @@ function toggleAdvanced() {
             totalData.push((m.total / 1000000000).toFixed(1));
         });
     } else {
-        // No data yet - show flatline at 0 with max size
+        // No historical metrics - show current status as flatline
+        var currentUsedGB = {$used_gb};
         var now = new Date();
         for (var i = 6; i >= 0; i--) {
             var d = new Date(now.getTime() - i * 3600000); // hourly intervals
             labels.push(d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {literal}{hour: '2-digit', minute:'2-digit'}{/literal}));
-            usedData.push(0);
+            usedData.push(currentUsedGB);
             totalData.push(totalSizeGB);
         }
     }
