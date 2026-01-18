@@ -409,7 +409,8 @@ function remotebackups_ClientArea(array $params): array
                 $templateVars['usage_percent'] = $sizeGB > 0 ? round(($usedGB / $sizeGB) * 100, 1) : 0;
                 $templateVars['friendly_name'] = $ds['friendly'] ?? 'N/A';
                 $templateVars['datastore_user'] = $ds['datastoreUser'] ?? '';
-                $templateVars['datastore_password'] = $ds['datastoreUserPassword'] ?? '';
+                // Use datastorePassword (not datastoreUserPassword) - matches Remote-Backup panel
+                $templateVars['datastore_password'] = $ds['datastorePassword'] ?? '';
 
                 // Server connection info
                 if (isset($ds['server'])) {
