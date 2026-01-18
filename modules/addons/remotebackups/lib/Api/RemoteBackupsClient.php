@@ -128,13 +128,15 @@ class RemoteBackupsClient
 
     /**
      * Get used space in GB from API response
+     * Uses status.used for current data (not metrics which may be empty)
      * @param array $datastore Datastore data from API
-     * @return int Used space in GB
+     * @return float Used space in GB
      */
-    public static function getUsedInGB(array $datastore): int
+    public static function getUsedInGB(array $datastore): float
     {
-        $usedBytes = $datastore['metrics']['used'] ?? 0;
-        return (int) round($usedBytes / 1000 / 1000 / 1000);
+        // Try status.used first (current live data), fallback to 0
+        $usedBytes = $datastore['status']['used'] ?? 0;
+        return round($usedBytes / 1000 / 1000 / 1000, 2);
     }
 
     /**
