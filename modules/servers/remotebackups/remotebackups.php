@@ -375,12 +375,40 @@ function remotebackups_AdminServicesTabFields(array $params): array
 
 /**
  * Client area output
+ * 
+ * Supports multiple tabs:
+ * - Overview (default): Shows connection details and usage
+ * - Settings: Allows resize and autoscaling configuration
  */
 function remotebackups_ClientArea(array $params): array
 {
     $serviceId = $params['serviceid'];
     $datastoreId = remotebackups_getDatastoreId($serviceId);
+    $requestedAction = $_REQUEST['customAction'] ?? '';
 
+    // Get addon settings for min/max size
+    $addonSettings = [];
+    try {
+        $addonSettings = Capsule::table('tbladdonmodules')
+            ->where('module', 'remotebackups')
+            ->pluck('value', 'setting');
+    } catch (\Exception $e) {
+        // Ignore
+    }
+    $minSizeGB = (int) ($addonSettings['min_size'] ?? 500);
+    $maxSizeGB = (int) ($addonSettings['max_size'] ?? 10000);
+
+    // Handle Settings tab
+    if ($requestedAction === 'settings') {
+        return remotebackups_ClientAreaSettings($params, $datastoreId, $minSizeGB, $maxSizeGB);
+    }
+
+    // Handle save settings action
+    if ($requestedAction === 'saveSettings' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        return remotebackups_ClientAreaSaveSettings($params, $datastoreId, $minSizeGB, $maxSizeGB);
+    }
+
+    // Default: Overview tab
     $templateVars = [
         'serviceid' => $serviceId,
         'datastore_id' => $datastoreId ?? 'Not available',
@@ -435,8 +463,121 @@ function remotebackups_ClientArea(array $params): array
     return [
         'tabOverviewReplacementTemplate' => 'templates/clientarea.tpl',
         'templateVariables' => $templateVars,
+        'tabs' => [
+            'Settings' => [
+                'icon' => 'fa-cog',
+                'link' => 'clientarea.php?action=productdetails&id=' . $serviceId . '&customAction=settings',
+            ],
+        ],
     ];
 }
+
+/**
+ * Settings tab handler
+ */
+function remotebackups_ClientAreaSettings(array $params, ?string $datastoreId, int $minSizeGB, int $maxSizeGB): array
+{
+    $serviceId = $params['serviceid'];
+    $templateVars = [
+        'serviceid' => $serviceId,
+        'datastore_id' => $datastoreId,
+        'current_size_gb' => 500,
+        'min_size_gb' => $minSizeGB,
+        'max_size_gb' => $maxSizeGB,
+        'autoscaling_enabled' => false,
+        'autoscaling_scale_up_only' => false,
+        'autoscaling_lower_threshold' => 70,
+        'autoscaling_upper_threshold' => 80,
+        'bandwidth_limit' => 500,
+    ];
+
+    if ($datastoreId) {
+        $client = remotebackups_getClient();
+        if ($client) {
+            try {
+                $ds = $client->getDatastore($datastoreId);
+                $templateVars['current_size_gb'] = RemoteBackupsClient::getSizeInGB($ds);
+                $templateVars['autoscaling_enabled'] = $ds['autoscalingEnabled'] ?? false;
+                $templateVars['autoscaling_scale_up_only'] = $ds['autoscalingScaleUpOnly'] ?? false;
+                $templateVars['autoscaling_lower_threshold'] = $ds['autoscalingLowerThreshold'] ?? 70;
+                $templateVars['autoscaling_upper_threshold'] = $ds['autoscalingUpperThreshold'] ?? 80;
+                $templateVars['bandwidth_limit'] = $ds['speed'] ?? 500;
+            } catch (\Exception $e) {
+                $templateVars['error'] = $e->getMessage();
+            }
+        }
+    }
+
+    return [
+        'templatefile' => 'templates/settings',
+        'templateVariables' => $templateVars,
+    ];
+}
+
+/**
+ * Save settings action handler
+ */
+function remotebackups_ClientAreaSaveSettings(array $params, ?string $datastoreId, int $minSizeGB, int $maxSizeGB): array
+{
+    $serviceId = $params['serviceid'];
+
+    if (!$datastoreId) {
+        return remotebackups_ClientAreaSettings($params, $datastoreId, $minSizeGB, $maxSizeGB);
+    }
+
+    $client = remotebackups_getClient();
+    if (!$client) {
+        $templateVars = remotebackups_ClientAreaSettings($params, $datastoreId, $minSizeGB, $maxSizeGB)['templateVariables'];
+        $templateVars['error'] = 'API client not available';
+        return ['templatefile' => 'templates/settings', 'templateVariables' => $templateVars];
+    }
+
+    try {
+        // Get current datastore data
+        $ds = $client->getDatastore($datastoreId);
+
+        // Prepare update data
+        $newSizeGB = (int) ($_POST['size_gb'] ?? $ds['size']);
+        $newSizeGB = max($minSizeGB, min($maxSizeGB, $newSizeGB));
+
+        $updateData = [
+            'friendly' => $ds['friendly'],
+            'size' => $newSizeGB,
+            'autoscalingEnabled' => ($_POST['autoscaling_enabled'] ?? '0') === '1',
+            'autoscalingScaleUpOnly' => ($_POST['scale_up_only'] ?? '0') === '1',
+            'autoscalingLowerThreshold' => (int) ($_POST['lower_threshold'] ?? 70),
+            'autoscalingUpperThreshold' => (int) ($_POST['upper_threshold'] ?? 80),
+            'speed' => (int) ($_POST['bandwidth_limit'] ?? 500),
+        ];
+
+        // Call API to update all settings including autoscaling
+        $client->updateDatastore($datastoreId, $updateData);
+
+        // Log the action
+        logModuleCall('remotebackups', 'saveSettings', $updateData, 'Success', '', [$params]);
+
+        // Redirect back to settings with success message
+        $templateVars = remotebackups_ClientAreaSettings($params, $datastoreId, $minSizeGB, $maxSizeGB)['templateVariables'];
+        $templateVars['success'] = 'Settings saved successfully! New size: ' . $newSizeGB . ' GB';
+
+        return [
+            'templatefile' => 'templates/settings',
+            'templateVariables' => $templateVars,
+        ];
+
+    } catch (\Exception $e) {
+        logModuleCall('remotebackups', 'saveSettings', $_POST, 'Error: ' . $e->getMessage(), '', [$params]);
+
+        $templateVars = remotebackups_ClientAreaSettings($params, $datastoreId, $minSizeGB, $maxSizeGB)['templateVariables'];
+        $templateVars['error'] = 'Failed to save settings: ' . $e->getMessage();
+
+        return [
+            'templatefile' => 'templates/settings',
+            'templateVariables' => $templateVars,
+        ];
+    }
+}
+
 
 /**
  * Helper: Get datastore ID for a service
