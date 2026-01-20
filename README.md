@@ -52,11 +52,50 @@ The server module handles automatic provisioning. When a customer orders a produ
 
 When a service is terminated, the module deletes the associated datastore. Upgrades and downgrades trigger a resize operation through the API.
 
-### Hourly Usage Tracking
+### Hourly Usage Tracking & Billing
 
 Remote-backups.com supports autoscaling, meaning datastore sizes can change automatically based on usage. To support accurate billing, the module includes a cron script that runs hourly. It queries all datastores from the API and compares their current size to the last recorded size. When a size change is detected, a new entry is written to the history table with a timestamp.
 
-This allows billing calculations based on actual usage. For example, if a datastore was 500 GB for 200 hours and 1000 GB for 520 hours in a billing period, the invoice can reflect the prorated cost for each size tier.
+> [!IMPORTANT]
+> **Billing is based on PROVISIONED size, not actual used storage.**
+> 
+> Even an empty datastore is billed at its full provisioned size. This matches how remote-backups.com charges resellers.
+
+#### How Billing Calculation Works
+
+When an invoice is created, the module calculates the prorated cost based on the size history:
+
+1. **Determine billing period** - Based on the service's billing cycle (monthly, quarterly, etc.)
+2. **Fetch size history** - Get all size change records within the billing period
+3. **Calculate weighted average** - Multiply each size by its duration in hours
+4. **Apply pricing** - Use the configured price per 1000 GB
+
+**Formula:**
+```
+Average GB = (Σ Size_GB × Hours_at_that_size) / Total_hours_in_period
+Monthly Cost = Average_GB × (Price_per_1000GB / 1000)
+```
+
+#### Billing Example
+
+Given this size history for a monthly billing cycle:
+
+| Date/Time | Event | Size |
+|-----------|-------|------|
+| Jan 18, 13:31 | Datastore created | 500 GB |
+| Jan 19, 01:00 | Autoscaling increased size | 600 GB |
+| Feb 18, 13:31 | Billing period ends | - |
+
+Calculation:
+- 500 GB × 11.5 hours = 5,750 GB-hours
+- 600 GB × 732.5 hours = 439,500 GB-hours (rest of month)
+- Total = 445,250 GB-hours
+- Period = 744 hours (31 days in January)
+- **Average = 598.45 GB**
+
+At €10/1000GB/month: 598.45 GB × €0.01 = **€5.98**
+
+The invoice description will show: "Usage-based billing: 598.45 GB average over 744 hours"
 
 ## Requirements
 
