@@ -69,3 +69,141 @@ console.log('Remote Backups WHMCS Module loaded');
 </script>
 HTML;
 });
+
+/**
+ * Hook: Invoice Creation Pre Email
+ * 
+ * Calculate prorated billing based on size history before invoice is sent.
+ * This adjusts the line item amount based on actual datastore sizes during
+ * the billing period.
+ * 
+ * IMPORTANT: Billing is based on PROVISIONED size, not actual used storage.
+ * Even an empty datastore is billed at its full provisioned size.
+ */
+add_hook('InvoiceCreationPreEmail', 1, function ($vars) {
+    $invoiceId = $vars['invoiceid'];
+
+    require_once __DIR__ . '/lib/BillingCalculator.php';
+
+    try {
+        // Get invoice items
+        $invoiceItems = Capsule::table('tblinvoiceitems')
+            ->where('invoiceid', $invoiceId)
+            ->where('type', 'Hosting')
+            ->get();
+
+        foreach ($invoiceItems as $item) {
+            // Check if this is a Remote Backups service
+            $service = Capsule::table('tblhosting')
+                ->where('id', $item->relid)
+                ->first();
+
+            if (!$service) {
+                continue;
+            }
+
+            // Check if this service uses our server module
+            $product = Capsule::table('tblproducts')
+                ->where('id', $service->packageid)
+                ->first();
+
+            if (!$product || $product->servertype !== 'remotebackups') {
+                continue;
+            }
+
+            // Get the datastore mapping
+            $mapping = Capsule::table('mod_remotebackups_datastores')
+                ->where('service_id', $item->relid)
+                ->first();
+
+            if (!$mapping) {
+                continue;
+            }
+
+            // Determine billing period
+            // Use the service's next due date as period end, calculate period start
+            $periodEnd = new \DateTime($service->nextduedate);
+
+            // Calculate period start based on billing cycle
+            $periodStart = clone $periodEnd;
+            switch (strtolower($service->billingcycle)) {
+                case 'monthly':
+                    $periodStart->modify('-1 month');
+                    break;
+                case 'quarterly':
+                    $periodStart->modify('-3 months');
+                    break;
+                case 'semi-annually':
+                case 'semiannually':
+                    $periodStart->modify('-6 months');
+                    break;
+                case 'annually':
+                    $periodStart->modify('-1 year');
+                    break;
+                case 'biennially':
+                    $periodStart->modify('-2 years');
+                    break;
+                case 'triennially':
+                    $periodStart->modify('-3 years');
+                    break;
+                default:
+                    // For other cycles, assume monthly
+                    $periodStart->modify('-1 month');
+            }
+
+            // Get price per 1000 GB from addon settings
+            $pricePerThousandGB = \WHMCS\Module\Addon\RemoteBackups\Lib\BillingCalculator::getPricePerThousandGB();
+
+            if ($pricePerThousandGB <= 0) {
+                continue; // No pricing configured
+            }
+
+            // Calculate prorated amount
+            $result = \WHMCS\Module\Addon\RemoteBackups\Lib\BillingCalculator::calculate(
+                $mapping->datastore_id,
+                $periodStart,
+                $periodEnd,
+                $pricePerThousandGB
+            );
+
+            if ($result['success'] && $result['amount'] > 0) {
+                // Update the invoice item with calculated amount
+                Capsule::table('tblinvoiceitems')
+                    ->where('id', $item->id)
+                    ->update([
+                        'amount' => $result['amount'],
+                        'description' => $item->description . "\n" .
+                            "Usage-based billing: " . $result['average_gb'] . " GB average over " .
+                            $result['total_hours'] . " hours",
+                    ]);
+
+                // Update invoice total
+                $invoice = Capsule::table('tblinvoices')
+                    ->where('id', $invoiceId)
+                    ->first();
+
+                if ($invoice) {
+                    $oldAmount = $item->amount;
+                    $difference = $result['amount'] - $oldAmount;
+
+                    Capsule::table('tblinvoices')
+                        ->where('id', $invoiceId)
+                        ->update([
+                            'subtotal' => $invoice->subtotal + $difference,
+                            'total' => $invoice->total + $difference,
+                        ]);
+                }
+
+                // Log the calculation for debugging
+                logActivity(
+                    "Remote Backups Billing: Service #{$item->relid} " .
+                    "Datastore {$mapping->datastore_id}: " .
+                    "{$result['average_gb']} GB avg × €{$pricePerThousandGB}/1000GB = €{$result['amount']} " .
+                    "(was €{$item->amount})"
+                );
+            }
+        }
+    } catch (\Exception $e) {
+        logActivity("Remote Backups Billing Error: " . $e->getMessage());
+    }
+});
