@@ -1,5 +1,10 @@
 # Remote Backups WHMCS Module
 
+> [!CAUTION]
+> **⚠️ DEVELOPMENT VERSION - NOT READY FOR PRODUCTION**
+> 
+> This module is currently under active development. Features may be incomplete, APIs may change, and bugs are expected. Do not use in production environments without thorough testing.
+
 WHMCS integration module for resellers of [remote-backups.com](https://remote-backups.com/).
 
 This module allows hosting providers and MSPs to offer managed backup storage to their customers. It connects to the remote-backups.com API and handles automatic provisioning, usage tracking, and billing integration.
@@ -8,11 +13,28 @@ Developed by [Nerdscave Hosting](https://www.nerdscave-hosting.com/)
 
 ## Features
 
+### Provisioning & Management
 - Automatic datastore provisioning when customers order backup storage
+- Automatic deletion when services are terminated
+- Resize support for upgrades/downgrades via PATCH API
+
+### Billing & Usage
 - Hourly usage tracking for accurate billing based on actual storage consumption
 - Configurable pricing per 1000 GB with minimum and maximum size limits
-- Admin dashboard showing all datastores, connection status, and usage statistics
-- Client area integration displaying storage usage and connection credentials
+- Size history recording for prorated billing calculations
+
+### Admin Dashboard
+- Overview of all datastores with connection status and usage statistics
+- Test connection functionality
+- Direct links to associated WHMCS services
+
+### Client Area
+- **Connection credentials** with copy-to-clipboard buttons (Host, User, Password, Datastore)
+- **Password protection** - hidden by default, reveal with eye icon
+- **Advanced info** section (collapsible) with server IPs, fingerprint, and warnings
+- **Storage usage graphs** showing used vs. total capacity
+- **Transfer rate graphs** showing read/write activity
+- **Auto-refresh** every 60 seconds with last-updated timestamp
 
 ## How It Works
 
