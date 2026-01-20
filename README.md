@@ -35,6 +35,10 @@ Developed by [Nerdscave Hosting](https://www.nerdscave-hosting.com/)
 - **Storage usage graphs** showing used vs. total capacity
 - **Transfer rate graphs** showing read/write activity
 - **Auto-refresh** every 60 seconds with last-updated timestamp
+- **Settings tab** for self-service management:
+  - Resize datastore (slider from 500 GB to max)
+  - Autoscaling configuration (enable/disable, scale behavior, thresholds)
+  - Bandwidth limit (100/250/500 Mbit/s)
 
 ## How It Works
 
