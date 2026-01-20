@@ -167,14 +167,26 @@ add_hook('InvoiceCreationPreEmail', 1, function ($vars) {
             );
 
             if ($result['success'] && $result['amount'] > 0) {
+                // Build detailed usage breakdown for invoice
+                $usageDetails = "Usage-based billing:\n";
+                $usageDetails .= "Period: " . $result['period_start'] . " to " . $result['period_end'] . "\n";
+                $usageDetails .= "Size breakdown:\n";
+
+                foreach ($result['segments'] as $segment) {
+                    $fromDate = (new \DateTime($segment['from']))->format('d.m.Y H:i');
+                    $toDate = (new \DateTime($segment['to']))->format('d.m.Y H:i');
+                    $hours = round($segment['hours'], 1);
+                    $usageDetails .= "  • {$segment['size_gb']} GB: {$fromDate} - {$toDate} ({$hours}h)\n";
+                }
+
+                $usageDetails .= "Average: {$result['average_gb']} GB over {$result['total_hours']} hours";
+
                 // Update the invoice item with calculated amount
                 Capsule::table('tblinvoiceitems')
                     ->where('id', $item->id)
                     ->update([
                         'amount' => $result['amount'],
-                        'description' => $item->description . "\n" .
-                            "Usage-based billing: " . $result['average_gb'] . " GB average over " .
-                            $result['total_hours'] . " hours",
+                        'description' => $item->description . "\n" . $usageDetails,
                     ]);
 
                 // Update invoice total
