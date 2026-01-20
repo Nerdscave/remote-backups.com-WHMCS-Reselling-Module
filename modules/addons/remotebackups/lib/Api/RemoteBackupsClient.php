@@ -106,6 +106,29 @@ class RemoteBackupsClient
     }
 
     /**
+     * Update datastore with all settings (size, autoscaling, speed)
+     * 
+     * @param string $datastoreId
+     * @param array $settings Associative array with settings to update
+     * @return array Updated datastore data
+     */
+    public function updateDatastore(string $datastoreId, array $settings): array
+    {
+        // First get current datastore to use as defaults
+        $current = $this->getDatastore($datastoreId);
+
+        return $this->request('PATCH', '/reseller/datastore/' . $datastoreId, [
+            'friendly' => $settings['friendly'] ?? $current['friendly'],
+            'size' => $settings['size'] ?? ($current['size'] / 1e9),
+            'autoscalingEnabled' => $settings['autoscalingEnabled'] ?? $current['autoscalingEnabled'] ?? false,
+            'autoscalingScaleUpOnly' => $settings['autoscalingScaleUpOnly'] ?? $current['autoscalingScaleUpOnly'] ?? false,
+            'autoscalingLowerThreshold' => $settings['autoscalingLowerThreshold'] ?? $current['autoscalingLowerThreshold'] ?? 70,
+            'autoscalingUpperThreshold' => $settings['autoscalingUpperThreshold'] ?? $current['autoscalingUpperThreshold'] ?? 80,
+            'speed' => $settings['speed'] ?? $current['speed'] ?? 500,
+        ]);
+    }
+
+    /**
      * Delete a datastore
      * @param string $datastoreId
      * @return array
