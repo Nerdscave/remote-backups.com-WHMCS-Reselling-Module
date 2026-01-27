@@ -165,7 +165,7 @@ add_hook('InvoiceCreationPreEmail', 1, function ($vars) {
 
             // Get the datastore mapping
             $mapping = Capsule::table('mod_remotebackups_datastores')
-                ->where('service_id', $item->relid)
+                ->where('whmcs_service_id', $item->relid)
                 ->first();
 
             if (!$mapping) {
