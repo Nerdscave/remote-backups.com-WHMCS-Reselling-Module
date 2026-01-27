@@ -395,8 +395,8 @@ function remotebackups_ClientArea(array $params): array
     } catch (\Exception $e) {
         // Ignore
     }
-    $minSizeGB = (int) ($addonSettings['min_size'] ?? 500);
-    $maxSizeGB = (int) ($addonSettings['max_size'] ?? 10000);
+    $minSizeGB = (int) ($addonSettings['min_size_gb'] ?? 100);
+    $maxSizeGB = (int) ($addonSettings['max_size_gb'] ?? 10000);
 
     // Handle Settings tab
     if ($requestedAction === 'settings') {
@@ -538,10 +538,9 @@ function remotebackups_ClientAreaSettings(array $params, ?string $datastoreId, i
         }
     }
 
-    return [
-        'templatefile' => 'templates/settings',
-        'templateVariables' => $templateVars,
-    ];
+    // Settings tab is now inline in clientarea.tpl - redirect to main view
+    // This function is only called for legacy ?customAction=settings URLs
+    return remotebackups_ClientArea($params);
 }
 
 /**
@@ -586,25 +585,18 @@ function remotebackups_ClientAreaSaveSettings(array $params, ?string $datastoreI
         // Log the action
         logModuleCall('remotebackups', 'saveSettings', json_encode($updateData), 'Success');
 
-        // Redirect back to settings with success message
-        $templateVars = remotebackups_ClientAreaSettings($params, $datastoreId, $minSizeGB, $maxSizeGB)['templateVariables'];
-        $templateVars['success'] = 'Settings saved successfully! New size: ' . $newSizeGB . ' GB';
-
-        return [
-            'templatefile' => 'templates/settings',
-            'templateVariables' => $templateVars,
-        ];
+        // Return to main client area with success message
+        $result = remotebackups_ClientArea($params);
+        $result['templateVariables']['settings_saved'] = true;
+        return $result;
 
     } catch (\Exception $e) {
         logModuleCall('remotebackups', 'saveSettings', json_encode($_POST), 'Error: ' . $e->getMessage());
 
-        $templateVars = remotebackups_ClientAreaSettings($params, $datastoreId, $minSizeGB, $maxSizeGB)['templateVariables'];
-        $templateVars['error'] = 'Failed to save settings: ' . $e->getMessage();
-
-        return [
-            'templatefile' => 'templates/settings',
-            'templateVariables' => $templateVars,
-        ];
+        // Return to main client area with error message
+        $result = remotebackups_ClientArea($params);
+        $result['templateVariables']['settings_error'] = true;
+        return $result;
     }
 }
 
