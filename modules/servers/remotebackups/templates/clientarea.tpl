@@ -9,7 +9,13 @@
     <div class="panel-body">
         {if $error}
             <div class="alert alert-danger">{$error}</div>
-        {else}
+        {elseif $settings_error}
+            <div class="alert alert-danger">Failed to save settings. Please try again.</div>
+        {elseif $settings_saved}
+            <div class="alert alert-success">Settings saved successfully.</div>
+        {/if}
+
+        {if !$error}
             {* Tab Navigation - Pills style for better separation *}
             <ul class="nav nav-pills" role="tablist" style="margin-bottom: 25px; border-bottom: 2px solid #eee; padding-bottom: 15px;">
                 <li role="presentation" class="active" style="margin-right: 10px;">
@@ -87,8 +93,8 @@
                     
                     <div class="text-right text-muted" style="margin-top: 15px;">
                         <small>
-                            <i class="fa fa-refresh" id="refresh-icon"></i>
-                            Auto-refresh: 60s | Last: <span id="last-updated">{$smarty.now|date_format:"%H:%M:%S"}</span>
+                            <span id="last-updated">{$smarty.now|date_format:"%H:%M:%S"}</span> | 
+                            <a href="javascript:location.reload();" style="color: inherit;"><i class="fa fa-refresh"></i> Refresh</a>
                         </small>
                     </div>
                 </div>
@@ -336,11 +342,19 @@
 <script>
 function copyToClipboard(inputId) {
     var input = document.getElementById(inputId);
-    var originalType = input.type;
-    input.type = 'text';
-    input.select();
-    document.execCommand('copy');
-    input.type = originalType;
+    var textToCopy = input.value;
+    
+    // Use modern Clipboard API with fallback
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(textToCopy);
+    } else {
+        // Fallback for older browsers
+        var originalType = input.type;
+        input.type = 'text';
+        input.select();
+        document.execCommand('copy');
+        input.type = originalType;
+    }
     
     // Show feedback
     var btn = input.parentNode.querySelector('.btn');
@@ -383,7 +397,7 @@ document.getElementById('autoscaling_enabled').addEventListener('change', functi
 </script>
 
 {* Chart.js *}
-<script src="modules/servers/remotebackups/assets/chart.min.js"></script>
+<script src="{$WEB_ROOT}/modules/servers/remotebackups/assets/chart.min.js"></script>
 <script>
 (function() {
     var metricsData = {$metrics_json};
@@ -471,9 +485,4 @@ document.getElementById('autoscaling_enabled').addEventListener('change', functi
 })();
 </script>
 
-{* Auto-refresh *}
-<script>
-setInterval(function() {
-    document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
-}, 60000);
-</script>
+{* Timestamp update removed - was misleading as it didn't refresh actual data *}
