@@ -434,6 +434,7 @@ function remotebackups_ClientArea(array $params): array
 
                 $templateVars['size_gb'] = $sizeGB;
                 $templateVars['used_gb'] = $usedGB;
+                $templateVars['available_gb'] = $sizeGB - $usedGB;
                 $templateVars['usage_percent'] = $sizeGB > 0 ? round(($usedGB / $sizeGB) * 100, 1) : 0;
                 $templateVars['friendly_name'] = $ds['friendly'] ?? 'N/A';
                 $templateVars['datastore_user'] = $ds['datastoreUser'] ?? '';
@@ -454,21 +455,50 @@ function remotebackups_ClientArea(array $params): array
                     $templateVars['metrics'] = $metrics;
                     $templateVars['metrics_json'] = json_encode($metrics);
                 }
+
+                // Settings data for inline settings tab
+                $templateVars['autoscaling_enabled'] = $ds['autoscalingEnabled'] ?? false;
+                $templateVars['autoscaling_scale_up_only'] = $ds['autoscalingScaleUpOnly'] ?? false;
+                $templateVars['autoscaling_lower_threshold'] = $ds['autoscalingLowerThreshold'] ?? 70;
+                $templateVars['autoscaling_upper_threshold'] = $ds['autoscalingUpperThreshold'] ?? 80;
+                $templateVars['bandwidth_limit'] = $ds['speed'] ?? 500;
+                $templateVars['min_size_gb'] = $minSizeGB;
+                $templateVars['max_size_gb'] = $maxSizeGB;
             } catch (\Exception $e) {
                 $templateVars['error'] = $e->getMessage();
             }
         }
     }
 
+    // Add WHMCS billing/contract variables from params
+    // Use model if available (WHMCS 8+) or fall back to params
+    $model = $params['model'] ?? null;
+
+    $templateVars['regdate'] = $model ? $model->regdate : ($params['regdate'] ?? '');
+    $templateVars['nextduedate'] = $model ? $model->nextduedate : ($params['nextduedate'] ?? '');
+    $templateVars['billingcycle'] = $model ? $model->billingcycle : ($params['billingcycle'] ?? '');
+    $templateVars['firstpaymentamount'] = $model ? '€' . number_format($model->firstpaymentamount, 2) : ($params['firstpaymentamount'] ?? '');
+    $templateVars['status'] = $model ? $model->domainstatus : ($params['status'] ?? '');
+    $templateVars['paymentmethod'] = $params['paymentmethod'] ?? '';
+    $templateVars['product'] = $params['product']['name'] ?? ($params['productname'] ?? 'Remote Backup Datastore');
+    $templateVars['orderid'] = $model ? $model->orderid : ($params['orderid'] ?? '');
+
+    // Add pricing info for resize preview
+    // Load from addon settings directly (BillingCalculator is in addon module, not available here)
+    try {
+        $addonSettings = Capsule::table('tbladdonmodules')
+            ->where('module', 'remotebackups')
+            ->where('setting', 'price_per_1000gb')
+            ->first();
+        $templateVars['price_per_1000gb'] = (float) ($addonSettings->value ?? 10);
+    } catch (\Exception $e) {
+        $templateVars['price_per_1000gb'] = 10; // Default fallback
+    }
+
     return [
         'tabOverviewReplacementTemplate' => 'templates/clientarea.tpl',
         'templateVariables' => $templateVars,
-        'tabs' => [
-            'Settings' => [
-                'icon' => 'fa-cog',
-                'link' => 'clientarea.php?action=productdetails&id=' . $serviceId . '&customAction=settings',
-            ],
-        ],
+        // No sidebar tabs needed - all tabs are inline in the template
     ];
 }
 
@@ -554,7 +584,7 @@ function remotebackups_ClientAreaSaveSettings(array $params, ?string $datastoreI
         $client->updateDatastore($datastoreId, $updateData);
 
         // Log the action
-        logModuleCall('remotebackups', 'saveSettings', $updateData, 'Success', '', [$params]);
+        logModuleCall('remotebackups', 'saveSettings', json_encode($updateData), 'Success');
 
         // Redirect back to settings with success message
         $templateVars = remotebackups_ClientAreaSettings($params, $datastoreId, $minSizeGB, $maxSizeGB)['templateVariables'];
@@ -566,7 +596,7 @@ function remotebackups_ClientAreaSaveSettings(array $params, ?string $datastoreI
         ];
 
     } catch (\Exception $e) {
-        logModuleCall('remotebackups', 'saveSettings', $_POST, 'Error: ' . $e->getMessage(), '', [$params]);
+        logModuleCall('remotebackups', 'saveSettings', json_encode($_POST), 'Error: ' . $e->getMessage());
 
         $templateVars = remotebackups_ClientAreaSettings($params, $datastoreId, $minSizeGB, $maxSizeGB)['templateVariables'];
         $templateVars['error'] = 'Failed to save settings: ' . $e->getMessage();
