@@ -385,6 +385,7 @@ function remotebackups_ClientArea(array $params): array
     $serviceId = $params['serviceid'];
     $datastoreId = remotebackups_getDatastoreId($serviceId);
     $requestedAction = $_REQUEST['customAction'] ?? '';
+    $graphRange = $_REQUEST['graphRange'] ?? 'hour';
 
     // Get addon settings for min/max size
     $addonSettings = [];
@@ -422,6 +423,7 @@ function remotebackups_ClientArea(array $params): array
         'server_fingerprint' => '',
         'metrics' => [],
         'metrics_json' => '[]',
+        'graph_range' => $graphRange ?? 'hour',
     ];
 
     if ($datastoreId) {
@@ -449,12 +451,19 @@ function remotebackups_ClientArea(array $params): array
                     $templateVars['server_fingerprint'] = $ds['server']['fingerprint'] ?? '';
                 }
 
-                // Metrics for usage graph (last 48 data points = ~4 days)
-                if (isset($ds['metrics']) && is_array($ds['metrics'])) {
-                    $metrics = array_slice($ds['metrics'], -48);
-                    $templateVars['metrics'] = $metrics;
-                    $templateVars['metrics_json'] = json_encode($metrics);
+                // Graph data from dedicated graph endpoint
+                $validRanges = ['hour', 'day', 'week', 'month', 'decade'];
+                $safeRange = in_array($graphRange, $validRanges) ? $graphRange : 'hour';
+                try {
+                    $graphData = $client->getDatastoreGraph($datastoreId, $safeRange);
+                    $templateVars['metrics'] = $graphData;
+                    $templateVars['metrics_json'] = json_encode($graphData, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+                } catch (\Exception $e) {
+                    // Graph data is non-critical, don't fail the whole page
+                    $templateVars['metrics'] = [];
+                    $templateVars['metrics_json'] = '[]';
                 }
+                $templateVars['graph_range'] = $safeRange;
 
                 // Settings data for inline settings tab
                 $templateVars['autoscaling_enabled'] = $ds['autoscalingEnabled'] ?? false;

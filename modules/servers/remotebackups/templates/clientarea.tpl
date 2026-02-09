@@ -75,6 +75,20 @@
                         </div>
                     </div>
                     
+                    {* Time Range Selector *}
+                    <div class="row" style="margin-bottom: 15px;">
+                        <div class="col-sm-12">
+                            <div class="btn-group" role="group" aria-label="Graph time range">
+                                {foreach ['hour' => 'Hour', 'day' => 'Day', 'week' => 'Week', 'month' => 'Month', 'decade' => 'Decade'] as $rangeKey => $rangeLabel}
+                                    <a href="clientarea.php?action=productdetails&id={$serviceid}&graphRange={$rangeKey}" 
+                                       class="btn btn-default{if $graph_range == $rangeKey} active{/if}">
+                                        {$rangeLabel}
+                                    </a>
+                                {/foreach}
+                            </div>
+                        </div>
+                    </div>
+                    
                     {* Usage Graphs *}
                     <div class="row">
                         <div class="col-sm-6">
@@ -403,19 +417,56 @@ document.getElementById('autoscaling_enabled').addEventListener('change', functi
     var metricsData = {$metrics_json};
     var usedGB = {$used_gb};
     var totalGB = {$size_gb};
+    var graphRange = '{$graph_range|default:"hour"|escape:"javascript"}';
+    
+    // Format timestamp based on selected range
+    function formatTime(unixTimestamp) {
+        var d = new Date(unixTimestamp * 1000);
+        switch (graphRange) {
+            case 'hour':
+                return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            case 'day':
+                return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            case 'week':
+            case 'month':
+                return d.toLocaleDateString([], { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            case 'decade':
+                return d.toLocaleDateString([], { day: '2-digit', month: '2-digit', year: '2-digit' });
+            default:
+                return d.toLocaleTimeString();
+        }
+    }
+    
+    // Reduce data points for large datasets to keep charts readable
+    function downsample(data, maxPoints) {
+        if (data.length <= maxPoints) return data;
+        var step = Math.ceil(data.length / maxPoints);
+        var result = [];
+        for (var i = 0; i < data.length; i += step) {
+            result.push(data[i]);
+        }
+        // Always include last point
+        if (result[result.length - 1] !== data[data.length - 1]) {
+            result.push(data[data.length - 1]);
+        }
+        return result;
+    }
+    
+    // Downsample to max ~120 points for readability
+    var chartData = downsample(metricsData, 120);
     
     // Storage Usage Chart
     var usageCtx = document.getElementById('usageChart').getContext('2d');
     var labels = [], usedData = [], totalData = [];
     
-    if (metricsData.length > 0) {
-        metricsData.forEach(function(m) {
-            labels.push(new Date(m.timestamp || m.time).toLocaleTimeString());
-            usedData.push((m.used || 0) / 1e9);
-            totalData.push((m.size || totalGB * 1e9) / 1e9);
+    if (chartData.length > 0) {
+        chartData.forEach(function(m) {
+            labels.push(formatTime(m.time));
+            usedData.push(+((m.used || 0) / 1e9).toFixed(2));
+            totalData.push(+((m.total || 0) / 1e9).toFixed(2));
         });
     } else {
-        labels = [new Date().toLocaleTimeString()];
+        labels = [formatTime(Date.now() / 1000)];
         usedData = [usedGB];
         totalData = [totalGB];
     }
@@ -429,19 +480,35 @@ document.getElementById('autoscaling_enabled').addEventListener('change', functi
                 data: usedData,
                 borderColor: 'rgb(54, 162, 235)',
                 backgroundColor: 'rgba(54, 162, 235, 0.2)',
-                fill: true
+                fill: true,
+                pointRadius: chartData.length > 60 ? 0 : 2,
+                borderWidth: 2
             }, {
                 label: 'Total (GB)',
                 data: totalData,
                 borderColor: 'rgb(201, 203, 207)',
                 borderDash: [5, 5],
-                fill: false
+                fill: false,
+                pointRadius: 0,
+                borderWidth: 1
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { position: 'bottom' } }
+            plugins: { legend: { position: 'bottom' } },
+            scales: {
+                x: {
+                    ticks: {
+                        maxTicksLimit: 8,
+                        maxRotation: 45
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    title: { display: true, text: 'GB' }
+                }
+            }
         }
     });
     
@@ -449,10 +516,10 @@ document.getElementById('autoscaling_enabled').addEventListener('change', functi
     var transferCtx = document.getElementById('transferChart').getContext('2d');
     var readData = [], writeData = [];
     
-    if (metricsData.length > 0) {
-        metricsData.forEach(function(m) {
-            readData.push((m.read_bytes || 0) / 1e6);
-            writeData.push((m.write_bytes || 0) / 1e6);
+    if (chartData.length > 0) {
+        chartData.forEach(function(m) {
+            readData.push(+((m.read_bytes || 0) / 1e6).toFixed(2));
+            writeData.push(+((m.write_bytes || 0) / 1e6).toFixed(2));
         });
     } else {
         readData = [0];
@@ -464,22 +531,39 @@ document.getElementById('autoscaling_enabled').addEventListener('change', functi
         data: {
             labels: labels,
             datasets: [{
-                label: 'Read (MB/s)',
+                label: 'Read (MB)',
                 data: readData,
                 borderColor: 'rgb(75, 192, 192)',
-                fill: false
+                backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                fill: true,
+                pointRadius: chartData.length > 60 ? 0 : 2,
+                borderWidth: 2
             }, {
-                label: 'Write (MB/s)',
+                label: 'Write (MB)',
                 data: writeData,
                 borderColor: 'rgb(255, 159, 64)',
-                fill: false
+                backgroundColor: 'rgba(255, 159, 64, 0.1)',
+                fill: true,
+                pointRadius: chartData.length > 60 ? 0 : 2,
+                borderWidth: 2
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
             plugins: { legend: { position: 'bottom' } },
-            scales: { y: { beginAtZero: true } }
+            scales: {
+                x: {
+                    ticks: {
+                        maxTicksLimit: 8,
+                        maxRotation: 45
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    title: { display: true, text: 'MB' }
+                }
+            }
         }
     });
 })();

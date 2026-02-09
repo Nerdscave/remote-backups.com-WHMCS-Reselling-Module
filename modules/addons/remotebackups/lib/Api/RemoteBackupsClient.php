@@ -129,6 +129,23 @@ class RemoteBackupsClient
     }
 
     /**
+     * Get datastore graph/metrics data
+     * 
+     * @param string $datastoreId
+     * @param string $range One of: 'hour', 'day', 'week', 'month', 'decade'
+     * @return array Array of metric data points
+     */
+    public function getDatastoreGraph(string $datastoreId, string $range = 'hour'): array
+    {
+        $validRanges = ['hour', 'day', 'week', 'month', 'decade'];
+        if (!in_array($range, $validRanges)) {
+            $range = 'hour';
+        }
+
+        return $this->request('GET', '/reseller/datastore/' . $datastoreId . '/graph?range=' . $range);
+    }
+
+    /**
      * Delete a datastore
      * @param string $datastoreId
      * @return array
