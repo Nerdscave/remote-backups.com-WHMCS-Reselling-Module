@@ -1,4 +1,12 @@
 {* Remote Backups Client Area - Tabbed Interface *}
+{if $js_redirect}
+    <div class="alert alert-info">
+        <i class="fa fa-spinner fa-spin"></i> Saving settings...
+    </div>
+    <script>
+        window.location.href = '{$js_redirect}';
+    </script>
+{else}
 <div class="panel panel-default" id="remote-backup-panel">
     <div class="panel-heading">
         <h3 class="panel-title">
@@ -426,15 +434,14 @@
                                 <div class="col-sm-6">
                                     <div class="form-group">
                                         <label>Schedule Day(s):</label>
-                                        <select name="prune_schedule_days[]" class="form-control" multiple="multiple" style="height: 200px;">
-                                            <option value="*" {if in_array('*', $prune_schedule_days)}selected{/if}>Every Day</option>
-                                            <option value="mon" {if in_array('mon', $prune_schedule_days)}selected{/if}>Monday</option>
-                                            <option value="tue" {if in_array('tue', $prune_schedule_days)}selected{/if}>Tuesday</option>
-                                            <option value="wed" {if in_array('wed', $prune_schedule_days)}selected{/if}>Wednesday</option>
-                                            <option value="thu" {if in_array('thu', $prune_schedule_days)}selected{/if}>Thursday</option>
-                                            <option value="fri" {if in_array('fri', $prune_schedule_days)}selected{/if}>Friday</option>
-                                            <option value="sat" {if in_array('sat', $prune_schedule_days)}selected{/if}>Saturday</option>
-                                            <option value="sun" {if in_array('sun', $prune_schedule_days)}selected{/if}>Sunday</option>
+                                        <select name="prune_schedule_days[]" class="form-control" multiple="multiple" style="height: 160px;">
+                                            <option value="Mon" {if in_array('Mon', $prune_schedule_days)}selected{/if}>Monday</option>
+                                            <option value="Tue" {if in_array('Tue', $prune_schedule_days)}selected{/if}>Tuesday</option>
+                                            <option value="Wed" {if in_array('Wed', $prune_schedule_days)}selected{/if}>Wednesday</option>
+                                            <option value="Thu" {if in_array('Thu', $prune_schedule_days)}selected{/if}>Thursday</option>
+                                            <option value="Fri" {if in_array('Fri', $prune_schedule_days)}selected{/if}>Friday</option>
+                                            <option value="Sat" {if in_array('Sat', $prune_schedule_days)}selected{/if}>Saturday</option>
+                                            <option value="Sun" {if in_array('Sun', $prune_schedule_days)}selected{/if}>Sunday</option>
                                         </select>
                                         <p class="help-block"><small>Hold Ctrl (Windows) or Cmd (Mac) to select multiple days.</small></p>
                                     </div>
@@ -442,25 +449,11 @@
                                 <div class="col-sm-6">
                                     <div class="form-group">
                                         <label>Schedule Hour(s):</label>
-                                        <select name="prune_schedule_hours[]" class="form-control" multiple="multiple" style="height: 200px;">
-                                            <option value="*" {if in_array('*', $prune_schedule_hours)}selected{/if}>Every Hour</option>
-                                            <option value="*/2" {if in_array('*/2', $prune_schedule_hours)}selected{/if}>Every 2 Hours</option>
-                                            <option value="*/4" {if in_array('*/4', $prune_schedule_hours)}selected{/if}>Every 4 Hours</option>
-                                            <option value="*/6" {if in_array('*/6', $prune_schedule_hours)}selected{/if}>Every 6 Hours</option>
-                                            <option value="*/8" {if in_array('*/8', $prune_schedule_hours)}selected{/if}>Every 8 Hours</option>
-                                            <option value="*/12" {if in_array('*/12', $prune_schedule_hours)}selected{/if}>Every 12 Hours</option>
-                                            <option value="00:00" {if in_array('00:00', $prune_schedule_hours)}selected{/if}>00:00</option>
-                                            <option value="02:00" {if in_array('02:00', $prune_schedule_hours)}selected{/if}>02:00</option>
-                                            <option value="04:00" {if in_array('04:00', $prune_schedule_hours)}selected{/if}>04:00</option>
-                                            <option value="06:00" {if in_array('06:00', $prune_schedule_hours)}selected{/if}>06:00</option>
-                                            <option value="08:00" {if in_array('08:00', $prune_schedule_hours)}selected{/if}>08:00</option>
-                                            <option value="10:00" {if in_array('10:00', $prune_schedule_hours)}selected{/if}>10:00</option>
-                                            <option value="12:00" {if in_array('12:00', $prune_schedule_hours)}selected{/if}>12:00</option>
-                                            <option value="14:00" {if in_array('14:00', $prune_schedule_hours)}selected{/if}>14:00</option>
-                                            <option value="16:00" {if in_array('16:00', $prune_schedule_hours)}selected{/if}>16:00</option>
-                                            <option value="18:00" {if in_array('18:00', $prune_schedule_hours)}selected{/if}>18:00</option>
-                                            <option value="20:00" {if in_array('20:00', $prune_schedule_hours)}selected{/if}>20:00</option>
-                                            <option value="22:00" {if in_array('22:00', $prune_schedule_hours)}selected{/if}>22:00</option>
+                                        <select name="prune_schedule_hours[]" class="form-control" multiple="multiple" style="height: 160px;">
+                                            {foreach from=[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23] item=h}
+                                                {assign var="hourStr" value="`$h|string_format:'%02d'`:00"}
+                                                <option value="{$hourStr}" {if in_array($hourStr, $prune_schedule_hours)}selected{/if}>{$hourStr} Uhr</option>
+                                            {/foreach}
                                         </select>
                                         <p class="help-block"><small>Hold Ctrl/Cmd to select multiple hours.</small></p>
                                     </div>
@@ -696,3 +689,4 @@ document.getElementById('autoscaling_enabled').addEventListener('change', functi
 </script>
 
 {* Timestamp update removed - was misleading as it didn't refresh actual data *}
+{/if}

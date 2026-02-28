@@ -431,6 +431,24 @@ function remotebackups_ClientArea(array $params): array
         'graph_range' => $graphRange ?? 'hour',
     ];
 
+    if (isset($_GET['success'])) {
+        if ($_GET['success'] === 'settings') {
+            $templateVars['settings_saved'] = true;
+        } elseif ($_GET['success'] === 'prune') {
+            $templateVars['prune_settings_saved'] = true;
+        }
+    }
+
+    if (isset($_GET['error'])) {
+        if ($_GET['error'] === 'settings_rate_limit') {
+            $templateVars['settings_error'] = true;
+            $templateVars['error'] = 'Please wait at least 5 seconds before saving settings again.';
+        } elseif ($_GET['error'] === 'prune_rate_limit') {
+            $templateVars['prune_settings_error'] = true;
+            $templateVars['error'] = 'Please wait at least 5 seconds before saving prune settings again.';
+        }
+    }
+
     if ($datastoreId) {
         $client = remotebackups_getClient();
         if ($client) {
@@ -489,38 +507,60 @@ function remotebackups_ClientArea(array $params): array
                 $templateVars['prune_keep_yearly'] = $gc['keep-yearly'] ?? '';
 
                 // Parse Schedule
-                $schedule = $gc['schedule'] ?? '';
-                $scheduleDays = '*';
-                $scheduleHours = '00:00';
+                $schedule = trim($gc['schedule'] ?? '');
+                $parsedDays = [];
+                $parsedHours = [];
 
-                if (trim($schedule) !== '') {
+                if ($schedule !== '') {
                     if ($schedule === 'daily') {
-                        $scheduleDays = '*';
-                        $scheduleHours = '00:00';
+                        $parsedDays = explode(',', 'Mon,Tue,Wed,Thu,Fri,Sat,Sun');
+                        $parsedHours = ['00:00'];
                     } elseif ($schedule === 'hourly') {
-                        $scheduleDays = '*';
-                        $scheduleHours = '*';
+                        $parsedDays = explode(',', 'Mon,Tue,Wed,Thu,Fri,Sat,Sun');
+                        $parsedHours = explode(',', '00:00,01:00,02:00,03:00,04:00,05:00,06:00,07:00,08:00,09:00,10:00,11:00,12:00,13:00,14:00,15:00,16:00,17:00,18:00,19:00,20:00,21:00,22:00,23:00');
                     } else {
-                        $parts = explode(' ', trim($schedule));
+                        $parts = explode(' ', $schedule);
+                        $daysPart = '*';
+                        $hoursPart = '00:00';
                         if (count($parts) === 2) {
-                            $scheduleDays = $parts[0];
-                            $scheduleHours = $parts[1];
+                            $daysPart = $parts[0];
+                            $hoursPart = $parts[1];
                         } elseif (count($parts) === 1) {
-                            // Try to guess if it's hours or days parsing
                             if (strpos($parts[0], ':') !== false || (strpos($parts[0], '*') !== false && !preg_match('/[a-zA-Z]/', $parts[0]))) {
-                                $scheduleHours = $parts[0];
-                                $scheduleDays = '*';
+                                $hoursPart = $parts[0];
+                                $daysPart = '*';
                             } else {
-                                $scheduleDays = $parts[0];
-                                $scheduleHours = '00:00';
+                                $daysPart = $parts[0];
+                            }
+                        }
+
+                        if ($daysPart === '*') {
+                            $parsedDays = explode(',', 'Mon,Tue,Wed,Thu,Fri,Sat,Sun');
+                        } else {
+                            $daysStr = str_ireplace('mon..fri', 'Mon,Tue,Wed,Thu,Fri', $daysPart);
+                            $parsedDays = array_map(function ($v) {
+                                return ucfirst(strtolower(trim($v)));
+                            }, explode(',', $daysStr));
+                        }
+
+                        if ($hoursPart === '*') {
+                            $parsedHours = explode(',', '00:00,01:00,02:00,03:00,04:00,05:00,06:00,07:00,08:00,09:00,10:00,11:00,12:00,13:00,14:00,15:00,16:00,17:00,18:00,19:00,20:00,21:00,22:00,23:00');
+                        } else {
+                            $rawHours = array_map('trim', explode(',', $hoursPart));
+                            $parsedHours = [];
+                            foreach ($rawHours as $hr) {
+                                if (preg_match('/^(\d{1,2})(:\d{1,2})?$/', $hr, $m)) {
+                                    $parsedHours[] = sprintf('%02d:00', $m[1]);
+                                } else {
+                                    $parsedHours[] = $hr;
+                                }
                             }
                         }
                     }
                 }
 
-                $scheduleDays = str_replace('mon..fri', 'mon,tue,wed,thu,fri', trim($scheduleDays));
-                $templateVars['prune_schedule_days'] = explode(',', $scheduleDays);
-                $templateVars['prune_schedule_hours'] = explode(',', trim($scheduleHours));
+                $templateVars['prune_schedule_days'] = $parsedDays;
+                $templateVars['prune_schedule_hours'] = $parsedHours;
             } catch (\Exception $e) {
                 $templateVars['error'] = $e->getMessage();
             }
@@ -599,38 +639,60 @@ function remotebackups_ClientAreaSettings(array $params, ?string $datastoreId, i
                 $templateVars['prune_keep_yearly'] = $gc['keep-yearly'] ?? '';
 
                 // Parse Schedule
-                $schedule = $gc['schedule'] ?? '';
-                $scheduleDays = '*';
-                $scheduleHours = '00:00';
+                $schedule = trim($gc['schedule'] ?? '');
+                $parsedDays = [];
+                $parsedHours = [];
 
-                if (trim($schedule) !== '') {
+                if ($schedule !== '') {
                     if ($schedule === 'daily') {
-                        $scheduleDays = '*';
-                        $scheduleHours = '00:00';
+                        $parsedDays = explode(',', 'Mon,Tue,Wed,Thu,Fri,Sat,Sun');
+                        $parsedHours = ['00:00'];
                     } elseif ($schedule === 'hourly') {
-                        $scheduleDays = '*';
-                        $scheduleHours = '*';
+                        $parsedDays = explode(',', 'Mon,Tue,Wed,Thu,Fri,Sat,Sun');
+                        $parsedHours = explode(',', '00:00,01:00,02:00,03:00,04:00,05:00,06:00,07:00,08:00,09:00,10:00,11:00,12:00,13:00,14:00,15:00,16:00,17:00,18:00,19:00,20:00,21:00,22:00,23:00');
                     } else {
-                        $parts = explode(' ', trim($schedule));
+                        $parts = explode(' ', $schedule);
+                        $daysPart = '*';
+                        $hoursPart = '00:00';
                         if (count($parts) === 2) {
-                            $scheduleDays = $parts[0];
-                            $scheduleHours = $parts[1];
+                            $daysPart = $parts[0];
+                            $hoursPart = $parts[1];
                         } elseif (count($parts) === 1) {
-                            // Try to guess if it's hours or days parsing
-                            if (strpos($parts[0], ':') !== false || strpos($parts[0], '*') !== false && !preg_match('/[a-zA-Z]/', $parts[0])) {
-                                $scheduleHours = $parts[0];
-                                $scheduleDays = '*';
+                            if (strpos($parts[0], ':') !== false || (strpos($parts[0], '*') !== false && !preg_match('/[a-zA-Z]/', $parts[0]))) {
+                                $hoursPart = $parts[0];
+                                $daysPart = '*';
                             } else {
-                                $scheduleDays = $parts[0];
-                                $scheduleHours = '00:00';
+                                $daysPart = $parts[0];
+                            }
+                        }
+
+                        if ($daysPart === '*') {
+                            $parsedDays = explode(',', 'Mon,Tue,Wed,Thu,Fri,Sat,Sun');
+                        } else {
+                            $daysStr = str_ireplace('mon..fri', 'Mon,Tue,Wed,Thu,Fri', $daysPart);
+                            $parsedDays = array_map(function ($v) {
+                                return ucfirst(strtolower(trim($v)));
+                            }, explode(',', $daysStr));
+                        }
+
+                        if ($hoursPart === '*') {
+                            $parsedHours = explode(',', '00:00,01:00,02:00,03:00,04:00,05:00,06:00,07:00,08:00,09:00,10:00,11:00,12:00,13:00,14:00,15:00,16:00,17:00,18:00,19:00,20:00,21:00,22:00,23:00');
+                        } else {
+                            $rawHours = array_map('trim', explode(',', $hoursPart));
+                            $parsedHours = [];
+                            foreach ($rawHours as $hr) {
+                                if (preg_match('/^(\d{1,2})(:\d{1,2})?$/', $hr, $m)) {
+                                    $parsedHours[] = sprintf('%02d:00', $m[1]);
+                                } else {
+                                    $parsedHours[] = $hr;
+                                }
                             }
                         }
                     }
                 }
 
-                $scheduleDays = str_replace('mon..fri', 'mon,tue,wed,thu,fri', trim($scheduleDays));
-                $templateVars['prune_schedule_days'] = explode(',', $scheduleDays);
-                $templateVars['prune_schedule_hours'] = explode(',', trim($scheduleHours));
+                $templateVars['prune_schedule_days'] = $parsedDays;
+                $templateVars['prune_schedule_hours'] = $parsedHours;
             } catch (\Exception $e) {
                 $templateVars['error'] = $e->getMessage();
             }
@@ -648,6 +710,18 @@ function remotebackups_ClientAreaSettings(array $params, ?string $datastoreId, i
 function remotebackups_ClientAreaSaveSettings(array $params, ?string $datastoreId, int $minSizeGB, int $maxSizeGB): array
 {
     $serviceId = $params['serviceid'];
+
+    // Prevent infinite recursion when calling remotebackups_ClientArea
+    unset($_REQUEST['customAction']);
+
+    // Basic rate limit to prevent API spamming (Settings)
+    if (isset($_SESSION['rb_last_settings_update']) && time() - $_SESSION['rb_last_settings_update'] < 5) {
+        $result = remotebackups_ClientArea($params);
+        $result['templateVariables']['settings_error'] = true;
+        $result['templateVariables']['error'] = 'Please wait at least 5 seconds before saving settings again.';
+        return $result;
+    }
+    $_SESSION['rb_last_settings_update'] = time();
 
     if (!$datastoreId) {
         return remotebackups_ClientAreaSettings($params, $datastoreId, $minSizeGB, $maxSizeGB);
@@ -684,9 +758,10 @@ function remotebackups_ClientAreaSaveSettings(array $params, ?string $datastoreI
         // Log the action
         logModuleCall('remotebackups', 'saveSettings', json_encode($updateData), 'Success');
 
-        // Return to main client area with success message
+        // Return to main client area with success message and a JS redirect to clean POST state
         $result = remotebackups_ClientArea($params);
         $result['templateVariables']['settings_saved'] = true;
+        $result['templateVariables']['js_redirect'] = "clientarea.php?action=productdetails&id=" . $serviceId . "&success=settings";
         return $result;
 
     } catch (\Exception $e) {
@@ -704,6 +779,20 @@ function remotebackups_ClientAreaSaveSettings(array $params, ?string $datastoreI
  */
 function remotebackups_ClientAreaSavePruneSettings(array $params, ?string $datastoreId): array
 {
+    $serviceId = $params['serviceid'];
+
+    // Prevent infinite recursion when calling remotebackups_ClientArea
+    unset($_REQUEST['customAction']);
+
+    // Basic rate limit to prevent API spamming (Prune Settings)
+    if (isset($_SESSION['rb_last_prune_update']) && time() - $_SESSION['rb_last_prune_update'] < 5) {
+        $result = remotebackups_ClientArea($params);
+        $result['templateVariables']['prune_settings_error'] = true;
+        $result['templateVariables']['error'] = 'Please wait at least 5 seconds before saving prune settings again. (Rate Limited)';
+        return $result;
+    }
+    $_SESSION['rb_last_prune_update'] = time();
+
     if (!$datastoreId) {
         return remotebackups_ClientArea($params);
     }
@@ -716,19 +805,31 @@ function remotebackups_ClientAreaSavePruneSettings(array $params, ?string $datas
     }
 
     try {
-        $keepLast = [
-            'keep-last' => isset($_POST['keep_last']) && $_POST['keep_last'] !== '' ? (int) $_POST['keep_last'] : null,
-            'keep-hourly' => isset($_POST['keep_hourly']) && $_POST['keep_hourly'] !== '' ? (int) $_POST['keep_hourly'] : null,
-            'keep-daily' => isset($_POST['keep_daily']) && $_POST['keep_daily'] !== '' ? (int) $_POST['keep_daily'] : null,
-            'keep-weekly' => isset($_POST['keep_weekly']) && $_POST['keep_weekly'] !== '' ? (int) $_POST['keep_weekly'] : null,
-            'keep-monthly' => isset($_POST['keep_monthly']) && $_POST['keep_monthly'] !== '' ? (int) $_POST['keep_monthly'] : null,
-            'keep-yearly' => isset($_POST['keep_yearly']) && $_POST['keep_yearly'] !== '' ? (int) $_POST['keep_yearly'] : null,
+        // API Requirements: 
+        // 1. The API strictly expects integers for limits. Empty strings from WHMCS must be dropped.
+        // 2. We use $_POST directly and check if numeric to prevent sending `null` or `0` when the user intended "no limit".
+        $keepLast = [];
+        $keepFields = [
+            'keep_last' => 'keep-last',
+            'keep_hourly' => 'keep-hourly',
+            'keep_daily' => 'keep-daily',
+            'keep_weekly' => 'keep-weekly',
+            'keep_monthly' => 'keep-monthly',
+            'keep_yearly' => 'keep-yearly',
         ];
 
-        // Remove null values recursively to avoid sending empty properties
-        $keepLast = array_filter($keepLast, function ($val) {
-            return $val !== null;
-        });
+        foreach ($keepFields as $postKey => $apiKey) {
+            if (isset($_POST[$postKey]) && is_numeric($_POST[$postKey]) && (int) $_POST[$postKey] > 0) {
+                $keepLast[$apiKey] = (int) $_POST[$postKey];
+            }
+        }
+
+        // API Requirement: If no limits are set, the Reseller API expects an empty object `{}`. 
+        // If we pass an empty PHP array `[]`, json_encode outputs `[]` which the API rejects as invalid type.
+        // Forcing a stdClass ensures `json_encode` creates `{}`.
+        if (empty($keepLast)) {
+            $keepLast = new \stdClass();
+        }
 
         $days = $_POST['prune_schedule_days'] ?? [];
         $hours = $_POST['prune_schedule_hours'] ?? [];
@@ -747,19 +848,31 @@ function remotebackups_ClientAreaSavePruneSettings(array $params, ?string $datas
             return $v !== '';
         });
 
-        $daysStr = in_array('*', $days) || empty($days) ? '*' : implode(',', $days);
-        $hoursStr = in_array('*', $hours) ? '*' : (empty($hours) ? '00:00' : implode(',', $hours));
-
-        if ($daysStr === '*' && $hoursStr === '*') {
-            $targetSchedule = 'hourly';
-        } elseif ($daysStr === '*' && $hoursStr === '00:00') {
-            $targetSchedule = 'daily';
+        if (empty($days)) {
+            $daysStr = 'Mon,Tue,Wed,Thu,Fri,Sat,Sun';
         } else {
-            $targetSchedule = '';
-            if ($daysStr !== '*') {
-                $targetSchedule .= $daysStr . ' ';
-            }
-            $targetSchedule .= $hoursStr;
+            $daysStr = implode(',', array_map(function ($v) {
+                return ucfirst(strtolower(trim($v)));
+            }, $days));
+        }
+
+        if (empty($hours)) {
+            $hoursStr = '00:00';
+        } else {
+            // Dashboard format: "Wed,Thu 0,1,2,16:00" 
+            // We strip ":00" from the WHMCS form values, remove leading zeros, and append a single ":00" at the end.
+            $hourInts = array_map(function ($h) {
+                return (int) str_replace(':00', '', $h);
+            }, $hours);
+            $hoursStr = implode(',', $hourInts) . ':00';
+        }
+
+        $targetSchedule = $daysStr . ' ' . $hoursStr;
+
+        // The Remote Backups API has a quirk where it expects the schedule string 
+        // BOTH inside the keepLast object (as "schedule") AND on the root level (as "targetSchedule").
+        if (!($keepLast instanceof \stdClass)) {
+            $keepLast['schedule'] = $targetSchedule;
         }
 
         $client->updatePruneSettings($datastoreId, $keepLast, trim($targetSchedule));
@@ -768,6 +881,7 @@ function remotebackups_ClientAreaSavePruneSettings(array $params, ?string $datas
 
         $result = remotebackups_ClientArea($params);
         $result['templateVariables']['prune_settings_saved'] = true;
+        $result['templateVariables']['js_redirect'] = "clientarea.php?action=productdetails&id=" . $serviceId . "&success=prune";
         return $result;
 
     } catch (\Exception $e) {

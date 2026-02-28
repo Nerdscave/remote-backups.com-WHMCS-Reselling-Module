@@ -132,14 +132,17 @@ class RemoteBackupsClient
      * Update datastore prune settings
      * 
      * @param string $datastoreId
-     * @param array $keepLast Associative array with keep settings (e.g. keep-last, keep-hourly)
-     * @param string $targetSchedule Cron schedule string
+     * @param array|\stdClass $keepLast Associative array/object with keep limits. Must be stdClass if empty!
+     * @param string $targetSchedule Cron schedule string (e.g. "Wed,Thu 16,17:00")
      * @return array
      */
-    public function updatePruneSettings(string $datastoreId, array $keepLast, string $targetSchedule): array
+    public function updatePruneSettings(string $datastoreId, $keepLast, string $targetSchedule): array
     {
+        // Ensure keepLast is an object even if empty to satisfy the API
+        $keepLastObj = empty($keepLast) ? new \stdClass() : $keepLast;
+
         return $this->request('PATCH', '/reseller/datastore/' . $datastoreId . '/prune-settings', [
-            'keepLast' => $keepLast,
+            'keepLast' => $keepLastObj,
             'targetSchedule' => $targetSchedule
         ]);
     }
@@ -244,7 +247,8 @@ class RemoteBackupsClient
             if (is_array($errorMessage)) {
                 $errorMessage = implode(', ', $errorMessage);
             }
-            throw new \Exception('API error (' . $httpCode . '): ' . $errorMessage);
+            $payloadStr = $data ? json_encode($data) : 'null';
+            throw new \Exception('API error (' . $httpCode . '): ' . $errorMessage . ' | Sent Payload: ' . $payloadStr);
         }
 
         return $decoded ?? [];
