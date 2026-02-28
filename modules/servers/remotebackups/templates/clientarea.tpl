@@ -45,23 +45,43 @@
                 {* ===== OVERVIEW TAB ===== *}
                 <div role="tabpanel" class="tab-pane active" id="overview-tab">
                     {* Storage Stats *}
-                    <div class="row">
-                        <div class="col-sm-4 text-center">
-                            <div class="well" style="margin-bottom: 10px;">
-                                <h2 style="margin: 0; color: #337ab7;">{$size_gb|number_format:0} GB</h2>
-                                <small class="text-muted">Total Size</small>
+                    <div class="row" style="margin-bottom: 25px;">
+                        {* Total Size Card *}
+                        <div class="col-sm-4">
+                            <div style="background: #fff; border: 1px solid #e5e5e5; border-radius: 8px; padding: 25px 20px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.02); transition: transform 0.2s, box-shadow 0.2s; height: 100%;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.08)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(0,0,0,0.02)';">
+                                <h5 style="color: #6c757d; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 0; margin-bottom: 15px; font-size: 13px;">Total Size</h5>
+                                <div style="font-size: 32px; font-weight: 700; color: #337ab7; line-height: 1;">
+                                    {$size_gb|number_format:0} <span style="font-size: 16px; font-weight: 600; color: #6c757d;">GB</span>
+                                </div>
+                                <div style="margin-top: 15px; font-size: 12px; color: #8a9096;">
+                                    <i class="fa fa-hdd-o"></i> Gesamt verfügbarer Speicherplatz
+                                </div>
                             </div>
                         </div>
-                        <div class="col-sm-4 text-center">
-                            <div class="well" style="margin-bottom: 10px;">
-                                <h2 style="margin: 0; color: {if $usage_percent > 80}#d9534f{elseif $usage_percent > 60}#f0ad4e{else}#5cb85c{/if};">{$used_gb|number_format:1} GB</h2>
-                                <small class="text-muted">Used ({$usage_percent}%)</small>
+                        
+                        {* Used Storage Card *}
+                        <div class="col-sm-4">
+                            <div style="background: #fff; border: 1px solid #e5e5e5; border-radius: 8px; padding: 25px 20px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.02); transition: transform 0.2s, box-shadow 0.2s; height: 100%;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.08)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(0,0,0,0.02)';">
+                                <h5 style="color: #6c757d; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 0; margin-bottom: 15px; font-size: 13px;">Used</h5>
+                                <div style="font-size: 32px; font-weight: 700; color: {if $usage_percent > 80}#d9534f{elseif $usage_percent > 60}#f0ad4e{else}#5cb85c{/if}; line-height: 1;">
+                                    {$used_gb|number_format:1} <span style="font-size: 16px; font-weight: 600; color: #6c757d;">GB</span>
+                                </div>
+                                <div style="margin-top: 15px; font-size: 12px; color: {if $usage_percent > 80}#d9534f{elseif $usage_percent > 60}#f0ad4e{else}#8a9096{/if}; font-weight: 600;">
+                                    {$usage_percent}% in Verwendung
+                                </div>
                             </div>
                         </div>
-                        <div class="col-sm-4 text-center">
-                            <div class="well" style="margin-bottom: 10px;">
-                                <h2 style="margin: 0; color: #5cb85c;">{$available_gb|number_format:1} GB</h2>
-                                <small class="text-muted">Available</small>
+                        
+                        {* Available Space Card *}
+                        <div class="col-sm-4">
+                            <div style="background: #fff; border: 1px solid #e5e5e5; border-radius: 8px; padding: 25px 20px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.02); transition: transform 0.2s, box-shadow 0.2s; height: 100%;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.08)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(0,0,0,0.02)';">
+                                <h5 style="color: #6c757d; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 0; margin-bottom: 15px; font-size: 13px;">Available</h5>
+                                <div style="font-size: 32px; font-weight: 700; color: #5cb85c; line-height: 1;">
+                                    {$available_gb|number_format:1} <span style="font-size: 16px; font-weight: 600; color: #6c757d;">GB</span>
+                                </div>
+                                <div style="margin-top: 15px; font-size: 12px; color: #8a9096;">
+                                    <i class="fa fa-check-circle" style="color: #5cb85c;"></i> Freier Speicherplatz
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -180,7 +200,7 @@
                                 <strong>For advanced users only.</strong> Most backup software only needs the settings above.
                             </div>
                             <table class="table table-condensed">
-                                <tr><td style="width: 100px;">Datastore ID:</td><td><code style="font-size: 12px; word-break: break-all;">{$datastore_id}</code></td></tr>
+                                <tr><td style="width: 100px;">ID:</td><td><code style="font-size: 12px; word-break: break-all;">{$datastore_id}</code></td></tr>
                                 <tr><td>IPv4:</td><td><code style="font-size: 12px;">{$server_ip}</code></td></tr>
                                 <tr><td>IPv6:</td><td><code style="font-size: 12px; word-break: break-all;">{$server_ip6}</code></td></tr>
                                 <tr><td>Fingerprint:</td><td><code style="font-size: 11px; word-break: break-all; display: block; max-width: 100%;">{$server_fingerprint}</code></td></tr>
