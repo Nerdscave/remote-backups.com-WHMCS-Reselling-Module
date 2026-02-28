@@ -366,6 +366,112 @@
                             <i class="fa fa-save"></i> Save Settings
                         </button>
                     </form>
+
+                    <hr style="margin-top: 40px; margin-bottom: 40px;">
+
+                    {* Prune Settings - Own Form *}
+                    <h4><i class="fa fa-history"></i> Backup & Retention</h4>
+                    
+                    {if $prune_settings_saved}
+                        <div class="alert alert-success">
+                            <i class="fa fa-check-circle"></i> Prune settings saved successfully.
+                        </div>
+                    {/if}
+                    {if $prune_settings_error}
+                        <div class="alert alert-danger">
+                            <i class="fa fa-exclamation-triangle"></i> Error saving prune settings: {$error}
+                        </div>
+                    {/if}
+                    
+                    <form method="post" action="clientarea.php?action=productdetails&id={$serviceid}&customAction=savePruneSettings">
+                        <div class="well">
+                            <p class="text-muted" style="margin-bottom: 20px;">
+                                Configure prune schedules for automatic backup cleanup. This feature is exclusive to Proxmox Backup Server / Proxmox Virtual Environment connections.
+                            </p>
+                            
+                            <div class="row">
+                                <div class="col-sm-6">
+                                    <div class="form-group">
+                                        <label>Keep Last:</label>
+                                        <input type="number" name="keep_last" class="form-control" min="1" value="{$prune_keep_last}">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Keep Daily:</label>
+                                        <input type="number" name="keep_daily" class="form-control" min="1" value="{$prune_keep_daily}">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Keep Monthly:</label>
+                                        <input type="number" name="keep_monthly" class="form-control" min="1" value="{$prune_keep_monthly}">
+                                    </div>
+                                </div>
+                                <div class="col-sm-6">
+                                    <div class="form-group">
+                                        <label>Keep Hourly:</label>
+                                        <input type="number" name="keep_hourly" class="form-control" min="1" value="{$prune_keep_hourly}">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Keep Weekly:</label>
+                                        <input type="number" name="keep_weekly" class="form-control" min="1" value="{$prune_keep_weekly}">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Keep Yearly:</label>
+                                        <input type="number" name="keep_yearly" class="form-control" min="1" value="{$prune_keep_yearly}">
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <hr style="border-top-color: #d8d8d8;">
+                            
+                            <div class="row">
+                                <div class="col-sm-6">
+                                    <div class="form-group">
+                                        <label>Schedule Day(s):</label>
+                                        <select name="prune_schedule_days[]" class="form-control" multiple="multiple" style="height: 200px;">
+                                            <option value="*" {if in_array('*', $prune_schedule_days)}selected{/if}>Every Day</option>
+                                            <option value="mon" {if in_array('mon', $prune_schedule_days)}selected{/if}>Monday</option>
+                                            <option value="tue" {if in_array('tue', $prune_schedule_days)}selected{/if}>Tuesday</option>
+                                            <option value="wed" {if in_array('wed', $prune_schedule_days)}selected{/if}>Wednesday</option>
+                                            <option value="thu" {if in_array('thu', $prune_schedule_days)}selected{/if}>Thursday</option>
+                                            <option value="fri" {if in_array('fri', $prune_schedule_days)}selected{/if}>Friday</option>
+                                            <option value="sat" {if in_array('sat', $prune_schedule_days)}selected{/if}>Saturday</option>
+                                            <option value="sun" {if in_array('sun', $prune_schedule_days)}selected{/if}>Sunday</option>
+                                        </select>
+                                        <p class="help-block"><small>Hold Ctrl (Windows) or Cmd (Mac) to select multiple days.</small></p>
+                                    </div>
+                                </div>
+                                <div class="col-sm-6">
+                                    <div class="form-group">
+                                        <label>Schedule Hour(s):</label>
+                                        <select name="prune_schedule_hours[]" class="form-control" multiple="multiple" style="height: 200px;">
+                                            <option value="*" {if in_array('*', $prune_schedule_hours)}selected{/if}>Every Hour</option>
+                                            <option value="*/2" {if in_array('*/2', $prune_schedule_hours)}selected{/if}>Every 2 Hours</option>
+                                            <option value="*/4" {if in_array('*/4', $prune_schedule_hours)}selected{/if}>Every 4 Hours</option>
+                                            <option value="*/6" {if in_array('*/6', $prune_schedule_hours)}selected{/if}>Every 6 Hours</option>
+                                            <option value="*/8" {if in_array('*/8', $prune_schedule_hours)}selected{/if}>Every 8 Hours</option>
+                                            <option value="*/12" {if in_array('*/12', $prune_schedule_hours)}selected{/if}>Every 12 Hours</option>
+                                            <option value="00:00" {if in_array('00:00', $prune_schedule_hours)}selected{/if}>00:00</option>
+                                            <option value="02:00" {if in_array('02:00', $prune_schedule_hours)}selected{/if}>02:00</option>
+                                            <option value="04:00" {if in_array('04:00', $prune_schedule_hours)}selected{/if}>04:00</option>
+                                            <option value="06:00" {if in_array('06:00', $prune_schedule_hours)}selected{/if}>06:00</option>
+                                            <option value="08:00" {if in_array('08:00', $prune_schedule_hours)}selected{/if}>08:00</option>
+                                            <option value="10:00" {if in_array('10:00', $prune_schedule_hours)}selected{/if}>10:00</option>
+                                            <option value="12:00" {if in_array('12:00', $prune_schedule_hours)}selected{/if}>12:00</option>
+                                            <option value="14:00" {if in_array('14:00', $prune_schedule_hours)}selected{/if}>14:00</option>
+                                            <option value="16:00" {if in_array('16:00', $prune_schedule_hours)}selected{/if}>16:00</option>
+                                            <option value="18:00" {if in_array('18:00', $prune_schedule_hours)}selected{/if}>18:00</option>
+                                            <option value="20:00" {if in_array('20:00', $prune_schedule_hours)}selected{/if}>20:00</option>
+                                            <option value="22:00" {if in_array('22:00', $prune_schedule_hours)}selected{/if}>22:00</option>
+                                        </select>
+                                        <p class="help-block"><small>Hold Ctrl/Cmd to select multiple hours.</small></p>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <button type="submit" class="btn btn-default">
+                                <i class="fa fa-save"></i> Save Prune Settings
+                            </button>
+                        </div>
+                    </form>
                 </div>
             </div>
         {/if}

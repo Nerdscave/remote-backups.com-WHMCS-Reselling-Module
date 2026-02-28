@@ -129,6 +129,22 @@ class RemoteBackupsClient
     }
 
     /**
+     * Update datastore prune settings
+     * 
+     * @param string $datastoreId
+     * @param array $keepLast Associative array with keep settings (e.g. keep-last, keep-hourly)
+     * @param string $targetSchedule Cron schedule string
+     * @return array
+     */
+    public function updatePruneSettings(string $datastoreId, array $keepLast, string $targetSchedule): array
+    {
+        return $this->request('PATCH', '/reseller/datastore/' . $datastoreId . '/prune-settings', [
+            'keepLast' => $keepLast,
+            'targetSchedule' => $targetSchedule
+        ]);
+    }
+
+    /**
      * Get datastore graph/metrics data
      * 
      * @param string $datastoreId
