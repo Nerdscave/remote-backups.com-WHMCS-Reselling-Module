@@ -112,7 +112,7 @@ function remotebackups_CreateAccount(array $params): string
 
     // Validate against addon limits
     $addonSettings = remotebackups_getAddonSettings();
-    $minSize = (int) ($addonSettings['min_size_gb'] ?? 100);
+    $minSize = (int) ($addonSettings['min_size_gb'] ?? 500);
     $maxSize = (int) ($addonSettings['max_size_gb'] ?? 10000);
 
     if ($sizeGB < $minSize) {
@@ -282,7 +282,7 @@ function remotebackups_ChangePackage(array $params): string
 
     // Validate against addon limits
     $addonSettings = remotebackups_getAddonSettings();
-    $minSize = (int) ($addonSettings['min_size_gb'] ?? 100);
+    $minSize = (int) ($addonSettings['min_size_gb'] ?? 500);
     $maxSize = (int) ($addonSettings['max_size_gb'] ?? 10000);
 
     if ($newSizeGB < $minSize) {
@@ -396,7 +396,7 @@ function remotebackups_ClientArea(array $params): array
     } catch (\Exception $e) {
         // Ignore
     }
-    $minSizeGB = (int) ($addonSettings['min_size_gb'] ?? 100);
+    $minSizeGB = (int) ($addonSettings['min_size_gb'] ?? 500);
     $maxSizeGB = (int) ($addonSettings['max_size_gb'] ?? 10000);
 
     // Handle Settings tab
@@ -592,6 +592,9 @@ function remotebackups_ClientArea(array $params): array
         $templateVars['price_per_1000gb'] = 10; // Default fallback
     }
 
+    // Pass CSRF token to template for form protection
+    $templateVars['token'] = $_SESSION['token'] ?? '';
+
     return [
         'tabOverviewReplacementTemplate' => 'templates/clientarea.tpl',
         'templateVariables' => $templateVars,
@@ -701,6 +704,7 @@ function remotebackups_ClientAreaSettings(array $params, ?string $datastoreId, i
 
     // Settings tab is now inline in clientarea.tpl - redirect to main view
     // This function is only called for legacy ?customAction=settings URLs
+    unset($_REQUEST['customAction']);
     return remotebackups_ClientArea($params);
 }
 
@@ -713,6 +717,14 @@ function remotebackups_ClientAreaSaveSettings(array $params, ?string $datastoreI
 
     // Prevent infinite recursion when calling remotebackups_ClientArea
     unset($_REQUEST['customAction']);
+
+    // CSRF protection
+    if (!isset($_POST['token']) || $_POST['token'] !== ($_SESSION['token'] ?? '')) {
+        $result = remotebackups_ClientArea($params);
+        $result['templateVariables']['settings_error'] = true;
+        $result['templateVariables']['error'] = 'Invalid request token. Please try again.';
+        return $result;
+    }
 
     // Basic rate limit to prevent API spamming (Settings)
     if (isset($_SESSION['rb_last_settings_update']) && time() - $_SESSION['rb_last_settings_update'] < 5) {
@@ -739,7 +751,10 @@ function remotebackups_ClientAreaSaveSettings(array $params, ?string $datastoreI
         $ds = $client->getDatastore($datastoreId);
 
         // Prepare update data
-        $newSizeGB = (int) ($_POST['size_gb'] ?? $ds['size']);
+        $newSizeGB = isset($_POST['size_gb'])
+            ? (int) $_POST['size_gb']
+            : RemoteBackupsClient::getSizeInGB($ds);
+        $newSizeGB = (int) round($newSizeGB / 100) * 100;
         $newSizeGB = max($minSizeGB, min($maxSizeGB, $newSizeGB));
 
         $updateData = [
@@ -784,6 +799,14 @@ function remotebackups_ClientAreaSavePruneSettings(array $params, ?string $datas
     // Prevent infinite recursion when calling remotebackups_ClientArea
     unset($_REQUEST['customAction']);
 
+    // CSRF protection
+    if (!isset($_POST['token']) || $_POST['token'] !== ($_SESSION['token'] ?? '')) {
+        $result = remotebackups_ClientArea($params);
+        $result['templateVariables']['prune_settings_error'] = true;
+        $result['templateVariables']['error'] = 'Invalid request token. Please try again.';
+        return $result;
+    }
+
     // Basic rate limit to prevent API spamming (Prune Settings)
     if (isset($_SESSION['rb_last_prune_update']) && time() - $_SESSION['rb_last_prune_update'] < 5) {
         $result = remotebackups_ClientArea($params);
@@ -805,9 +828,10 @@ function remotebackups_ClientAreaSavePruneSettings(array $params, ?string $datas
     }
 
     try {
-        // API Requirements: 
-        // 1. The API strictly expects integers for limits. Empty strings from WHMCS must be dropped.
-        // 2. We use $_POST directly and check if numeric to prevent sending `null` or `0` when the user intended "no limit".
+        // Retention limit handling:
+        // - Positive integer → set that limit
+        // - Empty or 0 → send 0, which tells the API to clear the limit (it won't forward 0 to PBS)
+        // We always send every field so the API can distinguish "keep this limit" from "remove it".
         $keepLast = [];
         $keepFields = [
             'keep_last' => 'keep-last',
@@ -819,8 +843,12 @@ function remotebackups_ClientAreaSavePruneSettings(array $params, ?string $datas
         ];
 
         foreach ($keepFields as $postKey => $apiKey) {
-            if (isset($_POST[$postKey]) && is_numeric($_POST[$postKey]) && (int) $_POST[$postKey] > 0) {
-                $keepLast[$apiKey] = (int) $_POST[$postKey];
+            $val = $_POST[$postKey] ?? '';
+            if (is_numeric($val) && (int) $val > 0) {
+                $keepLast[$apiKey] = (int) $val;
+            } else {
+                // Send 0 to clear the limit. Omitting the key would leave the old value in place.
+                $keepLast[$apiKey] = 0;
             }
         }
 
@@ -851,9 +879,12 @@ function remotebackups_ClientAreaSavePruneSettings(array $params, ?string $datas
         if (empty($days)) {
             $daysStr = 'Mon,Tue,Wed,Thu,Fri,Sat,Sun';
         } else {
-            $daysStr = implode(',', array_map(function ($v) {
-                return ucfirst(strtolower(trim($v)));
+            $allowedDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+            $validDays = array_filter(array_map(function ($v) use ($allowedDays) {
+                $n = ucfirst(strtolower(trim($v)));
+                return in_array($n, $allowedDays, true) ? $n : null;
             }, $days));
+            $daysStr = implode(',', $validDays) ?: 'Mon,Tue,Wed,Thu,Fri,Sat,Sun';
         }
 
         if (empty($hours)) {
@@ -869,9 +900,11 @@ function remotebackups_ClientAreaSavePruneSettings(array $params, ?string $datas
 
         $targetSchedule = $daysStr . ' ' . $hoursStr;
 
-        // The Remote Backups API has a quirk where it expects the schedule string 
+        // The Remote Backups API has a quirk where it expects the schedule string
         // BOTH inside the keepLast object (as "schedule") AND on the root level (as "targetSchedule").
-        if (!($keepLast instanceof \stdClass)) {
+        if ($keepLast instanceof \stdClass) {
+            $keepLast->schedule = $targetSchedule;
+        } else {
             $keepLast['schedule'] = $targetSchedule;
         }
 

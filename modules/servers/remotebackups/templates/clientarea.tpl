@@ -4,7 +4,7 @@
         <i class="fa fa-spinner fa-spin"></i> Saving settings...
     </div>
     <script>
-        window.location.href = '{$js_redirect}';
+        window.location.href = '{$js_redirect|escape:"javascript"}';
     </script>
 {else}
 <div class="panel panel-default" id="remote-backup-panel">
@@ -278,7 +278,8 @@
                 {* ===== SETTINGS TAB ===== *}
                 <div role="tabpanel" class="tab-pane" id="settings-tab">
                     <form method="post" action="clientarea.php?action=productdetails&id={$serviceid}&customAction=saveSettings">
-                        
+                        <input type="hidden" name="token" value="{$token}">
+
                         {* Resize Section with BIG visible value *}
                         <div class="well" style="text-align: center;">
                             <h4><i class="fa fa-arrows-h"></i> Datastore Size</h4>
@@ -392,6 +393,7 @@
                     {/if}
                     
                     <form method="post" action="clientarea.php?action=productdetails&id={$serviceid}&customAction=savePruneSettings">
+                        <input type="hidden" name="token" value="{$token}">
                         <div class="well">
                             <p class="text-muted" style="margin-bottom: 20px;">
                                 Configure prune schedules for automatic backup cleanup. This feature is exclusive to Proxmox Backup Server / Proxmox Virtual Environment connections.
@@ -524,9 +526,12 @@ document.getElementById('size_slider').addEventListener('input', function() {
 });
 
 // Toggle autoscaling options
-document.getElementById('autoscaling_enabled').addEventListener('change', function() {
-    document.getElementById('autoscaling_options').style.display = this.value === '1' ? 'block' : 'none';
-});
+var aeNode = document.getElementById('autoscaling_enabled');
+if (aeNode) {
+    aeNode.addEventListener('change', function() {
+        document.getElementById('autoscaling_options').style.display = this.value === '1' ? 'block' : 'none';
+    });
+}
 </script>
 
 {* Chart.js *}
@@ -574,117 +579,114 @@ document.getElementById('autoscaling_enabled').addEventListener('change', functi
     // Downsample to max ~120 points for readability
     var chartData = downsample(metricsData, 120);
     
-    // Storage Usage Chart
-    var usageCtx = document.getElementById('usageChart').getContext('2d');
-    var labels = [], usedData = [], totalData = [];
-    
+    // Prepare shared data arrays (outside chart if-blocks so both charts can use them)
+    var labels = [], usedData = [], totalData = [], readData = [], writeData = [];
+
     if (chartData.length > 0) {
         chartData.forEach(function(m) {
             labels.push(formatTime(m.time));
             usedData.push(+((m.used || 0) / 1e9).toFixed(2));
             totalData.push(+((m.total || 0) / 1e9).toFixed(2));
+            readData.push(+((m.read_bytes || 0) / 1e6).toFixed(2));
+            writeData.push(+((m.write_bytes || 0) / 1e6).toFixed(2));
         });
     } else {
         labels = [formatTime(Date.now() / 1000)];
         usedData = [usedGB];
         totalData = [totalGB];
-    }
-    
-    new Chart(usageCtx, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'Used (GB)',
-                data: usedData,
-                borderColor: 'rgb(54, 162, 235)',
-                backgroundColor: 'rgba(54, 162, 235, 0.2)',
-                fill: true,
-                pointRadius: chartData.length > 60 ? 0 : 2,
-                borderWidth: 2
-            }, {
-                label: 'Total (GB)',
-                data: totalData,
-                borderColor: 'rgb(201, 203, 207)',
-                borderDash: [5, 5],
-                fill: false,
-                pointRadius: 0,
-                borderWidth: 1
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { position: 'bottom' } },
-            scales: {
-                x: {
-                    ticks: {
-                        maxTicksLimit: 8,
-                        maxRotation: 45
-                    }
-                },
-                y: {
-                    beginAtZero: true,
-                    title: { display: true, text: 'GB' }
-                }
-            }
-        }
-    });
-    
-    // Transfer Rate Chart
-    var transferCtx = document.getElementById('transferChart').getContext('2d');
-    var readData = [], writeData = [];
-    
-    if (chartData.length > 0) {
-        chartData.forEach(function(m) {
-            readData.push(+((m.read_bytes || 0) / 1e6).toFixed(2));
-            writeData.push(+((m.write_bytes || 0) / 1e6).toFixed(2));
-        });
-    } else {
         readData = [0];
         writeData = [0];
     }
-    
-    new Chart(transferCtx, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'Read (MB)',
-                data: readData,
-                borderColor: 'rgb(75, 192, 192)',
-                backgroundColor: 'rgba(75, 192, 192, 0.1)',
-                fill: true,
-                pointRadius: chartData.length > 60 ? 0 : 2,
-                borderWidth: 2
-            }, {
-                label: 'Write (MB)',
-                data: writeData,
-                borderColor: 'rgb(255, 159, 64)',
-                backgroundColor: 'rgba(255, 159, 64, 0.1)',
-                fill: true,
-                pointRadius: chartData.length > 60 ? 0 : 2,
-                borderWidth: 2
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { position: 'bottom' } },
-            scales: {
-                x: {
-                    ticks: {
-                        maxTicksLimit: 8,
-                        maxRotation: 45
+
+    // Storage Usage Chart
+    var usageCanvas = document.getElementById('usageChart');
+    if (usageCanvas) {
+        new Chart(usageCanvas.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Used (GB)',
+                    data: usedData,
+                    borderColor: 'rgb(54, 162, 235)',
+                    backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                    fill: true,
+                    pointRadius: chartData.length > 60 ? 0 : 2,
+                    borderWidth: 2
+                }, {
+                    label: 'Total (GB)',
+                    data: totalData,
+                    borderColor: 'rgb(201, 203, 207)',
+                    borderDash: [5, 5],
+                    fill: false,
+                    pointRadius: 0,
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom' } },
+                scales: {
+                    x: {
+                        ticks: {
+                            maxTicksLimit: 8,
+                            maxRotation: 45
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        title: { display: true, text: 'GB' }
                     }
-                },
-                y: {
-                    beginAtZero: true,
-                    title: { display: true, text: 'MB' }
                 }
             }
-        }
-    });
+        });
+    }
+
+    // Transfer Rate Chart
+    var transferCanvas = document.getElementById('transferChart');
+    if (transferCanvas) {
+        new Chart(transferCanvas.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Read (MB)',
+                    data: readData,
+                    borderColor: 'rgb(75, 192, 192)',
+                    backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                    fill: true,
+                    pointRadius: chartData.length > 60 ? 0 : 2,
+                    borderWidth: 2
+                }, {
+                    label: 'Write (MB)',
+                    data: writeData,
+                    borderColor: 'rgb(255, 159, 64)',
+                    backgroundColor: 'rgba(255, 159, 64, 0.1)',
+                    fill: true,
+                    pointRadius: chartData.length > 60 ? 0 : 2,
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom' } },
+                scales: {
+                    x: {
+                        ticks: {
+                            maxTicksLimit: 8,
+                            maxRotation: 45
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        title: { display: true, text: 'MB' }
+                    }
+                }
+            }
+        });
+    }
 })();
 </script>
 

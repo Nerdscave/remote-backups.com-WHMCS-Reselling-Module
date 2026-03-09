@@ -119,7 +119,7 @@ class RemoteBackupsClient
 
         return $this->request('PATCH', '/reseller/datastore/' . $datastoreId, [
             'friendly' => $settings['friendly'] ?? $current['friendly'],
-            'size' => $settings['size'] ?? ($current['size'] / 1e9),
+            'size' => $settings['size'] ?? (int) round($current['size'] / 1e9),
             'autoscalingEnabled' => $settings['autoscalingEnabled'] ?? $current['autoscalingEnabled'] ?? false,
             'autoscalingScaleUpOnly' => $settings['autoscalingScaleUpOnly'] ?? $current['autoscalingScaleUpOnly'] ?? false,
             'autoscalingLowerThreshold' => $settings['autoscalingLowerThreshold'] ?? $current['autoscalingLowerThreshold'] ?? 70,
@@ -248,7 +248,8 @@ class RemoteBackupsClient
                 $errorMessage = implode(', ', $errorMessage);
             }
             $payloadStr = $data ? json_encode($data) : 'null';
-            throw new \Exception('API error (' . $httpCode . '): ' . $errorMessage . ' | Sent Payload: ' . $payloadStr);
+            error_log('RemoteBackupsClient: API error ' . $httpCode . ' | Payload: ' . $payloadStr);
+            throw new \Exception('API error (' . $httpCode . '): ' . $errorMessage);
         }
 
         return $decoded ?? [];
