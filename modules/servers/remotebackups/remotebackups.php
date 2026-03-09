@@ -95,6 +95,19 @@ function remotebackups_getAddonSettings(): array
 }
 
 /**
+ * Check if WHMCS error display is enabled (General Settings → Display Errors)
+ * When disabled, show a generic error message instead of the raw exception.
+ */
+function remotebackups_isDebugMode(): bool
+{
+    try {
+        return \WHMCS\Config\Setting::getValue('DisplayErrors') === 'on';
+    } catch (\Exception $e) {
+        return false;
+    }
+}
+
+/**
  * Create a new datastore for a service
  */
 function remotebackups_CreateAccount(array $params): string
@@ -399,11 +412,6 @@ function remotebackups_ClientArea(array $params): array
     $minSizeGB = (int) ($addonSettings['min_size_gb'] ?? 500);
     $maxSizeGB = (int) ($addonSettings['max_size_gb'] ?? 10000);
 
-    // Handle Settings tab
-    if ($requestedAction === 'settings') {
-        return remotebackups_ClientAreaSettings($params, $datastoreId, $minSizeGB, $maxSizeGB);
-    }
-
     // Handle save settings action
     if ($requestedAction === 'saveSettings' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         return remotebackups_ClientAreaSaveSettings($params, $datastoreId, $minSizeGB, $maxSizeGB);
@@ -562,7 +570,7 @@ function remotebackups_ClientArea(array $params): array
                 $templateVars['prune_schedule_days'] = $parsedDays;
                 $templateVars['prune_schedule_hours'] = $parsedHours;
             } catch (\Exception $e) {
-                $templateVars['error'] = $e->getMessage();
+                $templateVars['error'] = remotebackups_isDebugMode() ? $e->getMessage() : 'An error occurred. Please contact support.';
             }
         }
     }
@@ -602,111 +610,6 @@ function remotebackups_ClientArea(array $params): array
     ];
 }
 
-/**
- * Settings tab handler
- */
-function remotebackups_ClientAreaSettings(array $params, ?string $datastoreId, int $minSizeGB, int $maxSizeGB): array
-{
-    $serviceId = $params['serviceid'];
-    $templateVars = [
-        'serviceid' => $serviceId,
-        'datastore_id' => $datastoreId,
-        'current_size_gb' => 500,
-        'min_size_gb' => $minSizeGB,
-        'max_size_gb' => $maxSizeGB,
-        'autoscaling_enabled' => false,
-        'autoscaling_scale_up_only' => false,
-        'autoscaling_lower_threshold' => 70,
-        'autoscaling_upper_threshold' => 80,
-        'bandwidth_limit' => 500,
-    ];
-
-    if ($datastoreId) {
-        $client = remotebackups_getClient();
-        if ($client) {
-            try {
-                $ds = $client->getDatastore($datastoreId);
-                $templateVars['current_size_gb'] = RemoteBackupsClient::getSizeInGB($ds);
-                $templateVars['autoscaling_enabled'] = $ds['autoscalingEnabled'] ?? false;
-                $templateVars['autoscaling_scale_up_only'] = $ds['autoscalingScaleUpOnly'] ?? false;
-                $templateVars['autoscaling_lower_threshold'] = $ds['autoscalingLowerThreshold'] ?? 70;
-                $templateVars['autoscaling_upper_threshold'] = $ds['autoscalingUpperThreshold'] ?? 80;
-                $templateVars['bandwidth_limit'] = $ds['speed'] ?? 500;
-
-                $gc = $ds['gc'] ?? [];
-                $templateVars['prune_keep_last'] = $gc['keep-last'] ?? '';
-                $templateVars['prune_keep_hourly'] = $gc['keep-hourly'] ?? '';
-                $templateVars['prune_keep_daily'] = $gc['keep-daily'] ?? '';
-                $templateVars['prune_keep_weekly'] = $gc['keep-weekly'] ?? '';
-                $templateVars['prune_keep_monthly'] = $gc['keep-monthly'] ?? '';
-                $templateVars['prune_keep_yearly'] = $gc['keep-yearly'] ?? '';
-
-                // Parse Schedule
-                $schedule = trim($gc['schedule'] ?? '');
-                $parsedDays = [];
-                $parsedHours = [];
-
-                if ($schedule !== '') {
-                    if ($schedule === 'daily') {
-                        $parsedDays = explode(',', 'Mon,Tue,Wed,Thu,Fri,Sat,Sun');
-                        $parsedHours = ['00:00'];
-                    } elseif ($schedule === 'hourly') {
-                        $parsedDays = explode(',', 'Mon,Tue,Wed,Thu,Fri,Sat,Sun');
-                        $parsedHours = explode(',', '00:00,01:00,02:00,03:00,04:00,05:00,06:00,07:00,08:00,09:00,10:00,11:00,12:00,13:00,14:00,15:00,16:00,17:00,18:00,19:00,20:00,21:00,22:00,23:00');
-                    } else {
-                        $parts = explode(' ', $schedule);
-                        $daysPart = '*';
-                        $hoursPart = '00:00';
-                        if (count($parts) === 2) {
-                            $daysPart = $parts[0];
-                            $hoursPart = $parts[1];
-                        } elseif (count($parts) === 1) {
-                            if (strpos($parts[0], ':') !== false || (strpos($parts[0], '*') !== false && !preg_match('/[a-zA-Z]/', $parts[0]))) {
-                                $hoursPart = $parts[0];
-                                $daysPart = '*';
-                            } else {
-                                $daysPart = $parts[0];
-                            }
-                        }
-
-                        if ($daysPart === '*') {
-                            $parsedDays = explode(',', 'Mon,Tue,Wed,Thu,Fri,Sat,Sun');
-                        } else {
-                            $daysStr = str_ireplace('mon..fri', 'Mon,Tue,Wed,Thu,Fri', $daysPart);
-                            $parsedDays = array_map(function ($v) {
-                                return ucfirst(strtolower(trim($v)));
-                            }, explode(',', $daysStr));
-                        }
-
-                        if ($hoursPart === '*') {
-                            $parsedHours = explode(',', '00:00,01:00,02:00,03:00,04:00,05:00,06:00,07:00,08:00,09:00,10:00,11:00,12:00,13:00,14:00,15:00,16:00,17:00,18:00,19:00,20:00,21:00,22:00,23:00');
-                        } else {
-                            $rawHours = array_map('trim', explode(',', $hoursPart));
-                            $parsedHours = [];
-                            foreach ($rawHours as $hr) {
-                                if (preg_match('/^(\d{1,2})(:\d{1,2})?$/', $hr, $m)) {
-                                    $parsedHours[] = sprintf('%02d:00', $m[1]);
-                                } else {
-                                    $parsedHours[] = $hr;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                $templateVars['prune_schedule_days'] = $parsedDays;
-                $templateVars['prune_schedule_hours'] = $parsedHours;
-            } catch (\Exception $e) {
-                $templateVars['error'] = $e->getMessage();
-            }
-        }
-    }
-
-    // Settings tab is now inline in clientarea.tpl - redirect to main view
-    // This function is only called for legacy ?customAction=settings URLs
-    unset($_REQUEST['customAction']);
-    return remotebackups_ClientArea($params);
-}
 
 /**
  * Save settings action handler
@@ -736,14 +639,18 @@ function remotebackups_ClientAreaSaveSettings(array $params, ?string $datastoreI
     $_SESSION['rb_last_settings_update'] = time();
 
     if (!$datastoreId) {
-        return remotebackups_ClientAreaSettings($params, $datastoreId, $minSizeGB, $maxSizeGB);
+        $result = remotebackups_ClientArea($params);
+        $result['templateVariables']['settings_error'] = true;
+        $result['templateVariables']['error'] = 'No datastore linked to this service.';
+        return $result;
     }
 
     $client = remotebackups_getClient();
     if (!$client) {
-        $templateVars = remotebackups_ClientAreaSettings($params, $datastoreId, $minSizeGB, $maxSizeGB)['templateVariables'];
-        $templateVars['error'] = 'API client not available';
-        return ['templatefile' => 'templates/settings', 'templateVariables' => $templateVars];
+        $result = remotebackups_ClientArea($params);
+        $result['templateVariables']['settings_error'] = true;
+        $result['templateVariables']['error'] = 'API client not available';
+        return $result;
     }
 
     try {
@@ -782,9 +689,9 @@ function remotebackups_ClientAreaSaveSettings(array $params, ?string $datastoreI
     } catch (\Exception $e) {
         logModuleCall('remotebackups', 'saveSettings', json_encode($_POST), 'Error: ' . $e->getMessage());
 
-        // Return to main client area with error message
         $result = remotebackups_ClientArea($params);
         $result['templateVariables']['settings_error'] = true;
+        $result['templateVariables']['error'] = remotebackups_isDebugMode() ? $e->getMessage() : 'An error occurred. Please contact support.';
         return $result;
     }
 }
@@ -852,13 +759,6 @@ function remotebackups_ClientAreaSavePruneSettings(array $params, ?string $datas
             }
         }
 
-        // API Requirement: If no limits are set, the Reseller API expects an empty object `{}`. 
-        // If we pass an empty PHP array `[]`, json_encode outputs `[]` which the API rejects as invalid type.
-        // Forcing a stdClass ensures `json_encode` creates `{}`.
-        if (empty($keepLast)) {
-            $keepLast = new \stdClass();
-        }
-
         $days = $_POST['prune_schedule_days'] ?? [];
         $hours = $_POST['prune_schedule_hours'] ?? [];
 
@@ -890,23 +790,21 @@ function remotebackups_ClientAreaSavePruneSettings(array $params, ?string $datas
         if (empty($hours)) {
             $hoursStr = '00:00';
         } else {
-            // Dashboard format: "Wed,Thu 0,1,2,16:00" 
-            // We strip ":00" from the WHMCS form values, remove leading zeros, and append a single ":00" at the end.
-            $hourInts = array_map(function ($h) {
-                return (int) str_replace(':00', '', $h);
-            }, $hours);
-            $hoursStr = implode(',', $hourInts) . ':00';
+            // Systemd calendar format: each hour gets its own :00 suffix, comma-separated.
+            // WHMCS form values already come as "HH:00", so we just normalize and join.
+            // Example output: "02:00,10:00,11:00"
+            $normalized = array_filter(array_map(function ($h) {
+                $n = (int) str_replace(':00', '', $h);
+                return ($n >= 0 && $n <= 23) ? sprintf('%02d:00', $n) : null;
+            }, $hours));
+            $hoursStr = $normalized ? implode(',', $normalized) : '00:00';
         }
 
         $targetSchedule = $daysStr . ' ' . $hoursStr;
 
-        // The Remote Backups API has a quirk where it expects the schedule string
-        // BOTH inside the keepLast object (as "schedule") AND on the root level (as "targetSchedule").
-        if ($keepLast instanceof \stdClass) {
-            $keepLast->schedule = $targetSchedule;
-        } else {
-            $keepLast['schedule'] = $targetSchedule;
-        }
+        // The Remote Backups API expects the schedule string in both places:
+        // inside the keepLast object (as "schedule") AND on the root level (as "targetSchedule").
+        $keepLast['schedule'] = $targetSchedule;
 
         $client->updatePruneSettings($datastoreId, $keepLast, trim($targetSchedule));
 
@@ -922,7 +820,7 @@ function remotebackups_ClientAreaSavePruneSettings(array $params, ?string $datas
 
         $result = remotebackups_ClientArea($params);
         $result['templateVariables']['prune_settings_error'] = true;
-        $result['templateVariables']['error'] = $e->getMessage();
+        $result['templateVariables']['error'] = remotebackups_isDebugMode() ? $e->getMessage() : 'An error occurred. Please contact support.';
         return $result;
     }
 }

@@ -46,57 +46,8 @@ add_hook('AddonConfigSave', 1, function ($vars) {
     // The admin will see the test result on the dashboard
 });
 
-/**
- * Hook: Client Area Primary Sidebar
- * 
- * Add Settings tab to the product details sidebar navigation
- * for products using the remotebackups server module.
- */
-add_hook('ClientAreaPrimarySidebar', 1, function ($primarySidebar) {
-    // Only on product details page
-    if (!isset($_GET['action']) || $_GET['action'] !== 'productdetails') {
-        return;
-    }
-
-    $serviceId = isset($_GET['id']) ? (int) $_GET['id'] : 0;
-    if ($serviceId <= 0) {
-        return;
-    }
-
-    // Check if this service uses our module
-    try {
-        $service = Capsule::table('tblhosting')
-            ->where('id', $serviceId)
-            ->first();
-
-        if (!$service) {
-            return;
-        }
-
-        $product = Capsule::table('tblproducts')
-            ->where('id', $service->packageid)
-            ->first();
-
-        if (!$product || $product->servertype !== 'remotebackups') {
-            return;
-        }
-    } catch (\Exception $e) {
-        return;
-    }
-
-    // Find the Service Details Overview panel
-    $overviewPanel = $primarySidebar->getChild('Service Details Overview');
-    if ($overviewPanel === null) {
-        return;
-    }
-
-    // Add Settings menu item
-    $overviewPanel->addChild('Settings', [
-        'label' => '<i class="fa fa-cog"></i> Settings',
-        'uri' => 'clientarea.php?action=productdetails&id=' . $serviceId . '&customAction=settings',
-        'order' => 100,
-    ]);
-});
+// Settings sidebar link removed — Settings and Prune Settings are now tabs
+// on the main product details page, rendered inline by clientarea.tpl.
 
 /**
  * Hook: Admin Area Footer Output

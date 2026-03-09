@@ -16,7 +16,7 @@
     
     <div class="panel-body">
         {if $error}
-            <div class="alert alert-danger">{$error}</div>
+            <div class="alert alert-danger">{$error|escape:'html'}</div>
         {elseif $settings_error}
             <div class="alert alert-danger">Failed to save settings. Please try again.</div>
         {elseif $settings_saved}
@@ -388,7 +388,7 @@
                     {/if}
                     {if $prune_settings_error}
                         <div class="alert alert-danger">
-                            <i class="fa fa-exclamation-triangle"></i> Error saving prune settings: {$error}
+                            <i class="fa fa-exclamation-triangle"></i> Error saving prune settings{if $error}: {$error|escape:'html'}{/if}
                         </div>
                     {/if}
                     
@@ -511,7 +511,8 @@ function togglePassword(inputId, btn) {
 }
 
 // Slider value update - BIG and visible!
-document.getElementById('size_slider').addEventListener('input', function() {
+var sizeSlider = document.getElementById('size_slider');
+if (sizeSlider) sizeSlider.addEventListener('input', function() {
     var pricePerThousandGB = {$price_per_1000gb|default:10};
     var sizeDisplay = document.getElementById('size-display');
     var priceDisplay = document.getElementById('price-display');

@@ -119,7 +119,7 @@ class RemoteBackupsClient
 
         return $this->request('PATCH', '/reseller/datastore/' . $datastoreId, [
             'friendly' => $settings['friendly'] ?? $current['friendly'],
-            'size' => $settings['size'] ?? (int) round($current['size'] / 1e9),
+            'size' => $settings['size'] ?? self::getSizeInGB($current),
             'autoscalingEnabled' => $settings['autoscalingEnabled'] ?? $current['autoscalingEnabled'] ?? false,
             'autoscalingScaleUpOnly' => $settings['autoscalingScaleUpOnly'] ?? $current['autoscalingScaleUpOnly'] ?? false,
             'autoscalingLowerThreshold' => $settings['autoscalingLowerThreshold'] ?? $current['autoscalingLowerThreshold'] ?? 70,
