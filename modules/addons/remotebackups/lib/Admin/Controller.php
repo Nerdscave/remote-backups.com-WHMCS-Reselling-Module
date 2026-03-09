@@ -236,48 +236,90 @@ HTML;
     }
 
     /**
-     * View usage history
+     * View rescale log (from API)
      */
     public function usage(array $vars): string
     {
         $modulelink = $vars['modulelink'];
+        $apiToken = $vars['api_token'] ?? '';
+
+        if (empty($apiToken)) {
+            return '<div class="alert alert-warning">Please configure your API token first.</div>';
+        }
 
         try {
-            $history = Capsule::table('mod_remotebackups_size_history')
-                ->orderBy('recorded_at', 'desc')
-                ->limit(100)
-                ->get();
+            $client = new RemoteBackupsClient($apiToken);
+            $datastores = $client->listDatastores();
         } catch (\Exception $e) {
-            return '<div class="alert alert-warning">No usage history available yet.</div>';
+            return '<div class="alert alert-danger">API Error: ' . htmlspecialchars($e->getMessage()) . '</div>';
         }
+
+        // Collect rescale-log entries from all datastores
+        $allEntries = [];
+        foreach ($datastores as $ds) {
+            try {
+                $entries = $client->getRescaleLog($ds['_id'], '90d');
+                foreach ($entries as $entry) {
+                    $allEntries[] = $entry;
+                }
+            } catch (\Exception $e) {
+                // Skip datastores that fail
+            }
+        }
+
+        // Sort by createdAt descending (newest first)
+        usort($allEntries, function ($a, $b) {
+            return strcmp($b['createdAt'] ?? '', $a['createdAt'] ?? '');
+        });
+
+        // Limit to 100 entries
+        $allEntries = array_slice($allEntries, 0, 100);
 
         $html = <<<HTML
 <div class="panel panel-default">
     <div class="panel-heading">
-        <h3 class="panel-title"><i class="fas fa-chart-line"></i> Size Change History (Last 100)</h3>
+        <h3 class="panel-title"><i class="fas fa-chart-line"></i> Rescale Log (Last 90 Days)</h3>
     </div>
     <div class="panel-body">
         <table class="table table-striped table-bordered">
             <thead>
                 <tr>
-                    <th>Datastore ID</th>
-                    <th>Size (GB)</th>
-                    <th>Recorded At</th>
+                    <th>Datastore</th>
+                    <th>From</th>
+                    <th>To</th>
+                    <th>Type</th>
+                    <th>Date</th>
                 </tr>
             </thead>
             <tbody>
 HTML;
 
-        foreach ($history as $row) {
-            $datastoreId = htmlspecialchars($row->datastore_id);
-            $sizeGB = $row->size_gb;
-            $recordedAt = $row->recorded_at;
+        if (empty($allEntries)) {
+            $html .= '<tr><td colspan="5" class="text-center text-muted">No rescale events in the last 90 days.</td></tr>';
+        }
+
+        foreach ($allEntries as $entry) {
+            $datastoreName = htmlspecialchars($entry['datastoreName'] ?? 'Unknown');
+            $from = (int) ($entry['from'] ?? 0);
+            $to = (int) ($entry['to'] ?? 0);
+            $automatic = !empty($entry['automatic']);
+            $typeLabel = $automatic ? '<span class="label label-info">Auto</span>' : '<span class="label label-default">Manual</span>';
+
+            if ($to === 0) {
+                $typeLabel = '<span class="label label-danger">Deleted</span>';
+            }
+
+            $date = isset($entry['createdAt'])
+                ? date('Y-m-d H:i', strtotime($entry['createdAt']))
+                : 'N/A';
 
             $html .= <<<HTML
                 <tr>
-                    <td><code>{$datastoreId}</code></td>
-                    <td>{$sizeGB} GB</td>
-                    <td>{$recordedAt}</td>
+                    <td>{$datastoreName}</td>
+                    <td>{$from} GB</td>
+                    <td>{$to} GB</td>
+                    <td>{$typeLabel}</td>
+                    <td>{$date}</td>
                 </tr>
 HTML;
         }

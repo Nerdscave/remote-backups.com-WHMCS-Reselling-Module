@@ -15,24 +15,6 @@ if (!defined("WHMCS")) {
 use WHMCS\Database\Capsule;
 
 /**
- * Hook: Daily Cron Job
- * 
- * You can also add size tracking to the daily cron if you prefer
- * over running a separate hourly cron script.
- * 
- * Note: For accurate hourly billing, the dedicated cron.php 
- * should be run hourly via system cron.
- */
-add_hook('DailyCronJob', 1, function ($vars) {
-    // Optional: Run size tracker on daily cron as backup
-    // Uncomment if you want daily tracking in addition to hourly cron
-    /*
-    require_once __DIR__ . '/cron.php';
-    remotebackups_runSizeTracker();
-    */
-});
-
-/**
  * Hook: After module configuration is saved
  * 
  * Test the API connection when settings are saved
@@ -76,8 +58,8 @@ HTML;
 /**
  * Hook: Invoice Creation Pre Email
  * 
- * Calculate prorated billing based on size history before invoice is sent.
- * This adjusts the line item amount based on actual datastore sizes during
+ * Calculate prorated billing from the API's rescale-log before invoice is sent.
+ * Adjusts the line item amount based on actual datastore sizes during
  * the billing period.
  * 
  * IMPORTANT: Billing is based on PROVISIONED size, not actual used storage.
@@ -87,8 +69,21 @@ add_hook('InvoiceCreationPreEmail', 1, function ($vars) {
     $invoiceId = $vars['invoiceid'];
 
     require_once __DIR__ . '/lib/BillingCalculator.php';
+    require_once __DIR__ . '/lib/Api/RemoteBackupsClient.php';
 
     try {
+        // Get API token
+        $settings = Capsule::table('tbladdonmodules')
+            ->where('module', 'remotebackups')
+            ->pluck('value', 'setting');
+
+        $apiToken = $settings['api_token'] ?? '';
+        if (empty($apiToken)) {
+            return; // No API token, skip billing
+        }
+
+        $client = new \WHMCS\Module\Addon\RemoteBackups\Api\RemoteBackupsClient($apiToken);
+
         // Get invoice items
         $invoiceItems = Capsule::table('tblinvoiceitems')
             ->where('invoiceid', $invoiceId)
@@ -124,10 +119,8 @@ add_hook('InvoiceCreationPreEmail', 1, function ($vars) {
             }
 
             // Determine billing period
-            // Use the service's next due date as period end, calculate period start
             $periodEnd = new \DateTime($service->nextduedate);
 
-            // Calculate period start based on billing cycle
             $periodStart = clone $periodEnd;
             switch (strtolower($service->billingcycle)) {
                 case 'monthly':
@@ -150,7 +143,6 @@ add_hook('InvoiceCreationPreEmail', 1, function ($vars) {
                     $periodStart->modify('-3 years');
                     break;
                 default:
-                    // For other cycles, assume monthly
                     $periodStart->modify('-1 month');
             }
 
@@ -161,9 +153,31 @@ add_hook('InvoiceCreationPreEmail', 1, function ($vars) {
                 continue; // No pricing configured
             }
 
+            // Fetch rescale-log and current datastore info from the API
+            $datastoreId = $mapping->datastore_id;
+
+            try {
+                $datastore = $client->getDatastore($datastoreId);
+                $currentSizeGB = \WHMCS\Module\Addon\RemoteBackups\Api\RemoteBackupsClient::getSizeInGB($datastore);
+                $datastoreCreatedAt = $datastore['createdAt'] ?? $periodStart->format('c');
+
+                // Fetch rescale-log covering the full billing period.
+                // The API's range parameter is relative to now, so we need
+                // (now - periodStart) + buffer, not (periodEnd - periodStart).
+                $now = new \DateTime();
+                $daysDiff = max(30, (int) ceil(($now->getTimestamp() - $periodStart->getTimestamp()) / 86400) + 7);
+                $rescaleLog = $client->getRescaleLog($datastoreId, $daysDiff . 'd');
+            } catch (\Exception $e) {
+                logActivity("Remote Backups Billing: Could not fetch data for datastore {$datastoreId}: " . $e->getMessage());
+                continue;
+            }
+
             // Calculate prorated amount
             $result = \WHMCS\Module\Addon\RemoteBackups\Lib\BillingCalculator::calculate(
-                $mapping->datastore_id,
+                $datastoreId,
+                $rescaleLog,
+                $currentSizeGB,
+                $datastoreCreatedAt,
                 $periodStart,
                 $periodEnd,
                 $pricePerThousandGB
@@ -212,7 +226,7 @@ add_hook('InvoiceCreationPreEmail', 1, function ($vars) {
                 // Log the calculation for debugging
                 logActivity(
                     "Remote Backups Billing: Service #{$item->relid} " .
-                    "Datastore {$mapping->datastore_id}: " .
+                    "Datastore {$datastoreId}: " .
                     "{$result['average_gb']} GB avg × €{$pricePerThousandGB}/1000GB = €{$result['amount']} " .
                     "(was €{$item->amount})"
                 );

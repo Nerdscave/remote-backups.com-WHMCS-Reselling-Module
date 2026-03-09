@@ -49,7 +49,7 @@ function remotebackups_config(): array
             . '<br><strong>Developed by:</strong> <a href="https://www.nerdscave-hosting.com/" target="_blank">Nerdscave Hosting</a>',
         'author' => '<a href="https://www.nerdscave-hosting.com/" target="_blank">Moritz Mantel / Nerdscave Hosting</a>',
         'language' => 'english',
-        'version' => '1.0.0',
+        'version' => '1.1.0',
         'fields' => [
             'api_token' => [
                 'FriendlyName' => 'API Token',
@@ -105,17 +105,7 @@ function remotebackups_activate(): array
             });
         }
 
-        // Size history for hourly billing
-        if (!$schema->hasTable('mod_remotebackups_size_history')) {
-            $schema->create('mod_remotebackups_size_history', function ($table) {
-                $table->increments('id');
-                $table->string('datastore_id', 255);
-                $table->integer('size_gb');
-                $table->timestamp('recorded_at')->useCurrent();
 
-                $table->index(['datastore_id', 'recorded_at']);
-            });
-        }
 
         return [
             'status' => 'success',
@@ -140,7 +130,7 @@ function remotebackups_deactivate(): array
 
         // Ask for confirmation before dropping tables
         // In production, you might want to keep the data
-        $schema->dropIfExists('mod_remotebackups_size_history');
+
         $schema->dropIfExists('mod_remotebackups_datastores');
 
         return [
@@ -162,8 +152,15 @@ function remotebackups_upgrade(array $vars): void
 {
     $currentVersion = $vars['version'];
 
-    // Add upgrade logic here for future versions
-    // if (version_compare($currentVersion, '1.1.0', '<')) { ... }
+    // v1.1.0: Billing now uses the API's rescale-log instead of local tracking.
+    // Drop the size_history table that the old cron.php used to populate.
+    if (version_compare($currentVersion, '1.1.0', '<')) {
+        try {
+            Capsule::schema()->dropIfExists('mod_remotebackups_size_history');
+        } catch (\Exception $e) {
+            // Ignore if table doesn't exist
+        }
+    }
 }
 
 /**
@@ -191,7 +188,7 @@ function remotebackups_sidebar(array $vars): string
 <ul class="menu">
     <li><a href="{$modulelink}">Dashboard</a></li>
     <li><a href="{$modulelink}&action=datastores">Datastores</a></li>
-    <li><a href="{$modulelink}&action=usage">Usage History</a></li>
+    <li><a href="{$modulelink}&action=usage">Rescale Log</a></li>
     <li><a href="{$modulelink}&action=testconnection">Test Connection</a></li>
 </ul>
 HTML;

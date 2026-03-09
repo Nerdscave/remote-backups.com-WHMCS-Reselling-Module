@@ -153,13 +153,6 @@ function remotebackups_CreateAccount(array $params): string
             'updated_at' => date('Y-m-d H:i:s'),
         ]);
 
-        // Record initial size in history
-        Capsule::table('mod_remotebackups_size_history')->insert([
-            'datastore_id' => $datastoreId,
-            'size_gb' => $sizeGB,
-            'recorded_at' => date('Y-m-d H:i:s'),
-        ]);
-
         // Store datastore ID in service custom field or dedicated field
         // This allows retrieval even if our mapping table fails
         Capsule::table('tblhosting')
@@ -322,13 +315,6 @@ function remotebackups_ChangePackage(array $params): string
                 'current_size_gb' => $newSizeGB,
                 'updated_at' => date('Y-m-d H:i:s'),
             ]);
-
-        // Record size change in history
-        Capsule::table('mod_remotebackups_size_history')->insert([
-            'datastore_id' => $datastoreId,
-            'size_gb' => $newSizeGB,
-            'recorded_at' => date('Y-m-d H:i:s'),
-        ]);
 
         logModuleCall(
             'remotebackups',

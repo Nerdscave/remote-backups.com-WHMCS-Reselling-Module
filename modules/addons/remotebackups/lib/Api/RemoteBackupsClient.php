@@ -165,6 +165,24 @@ class RemoteBackupsClient
     }
 
     /**
+     * Get rescale log for a datastore
+     *
+     * Returns resize events (manual, autoscaling, deletion) ordered by most recent first.
+     * Each entry has: _id, datastoreId, datastoreName, automatic (bool), from (GB), to (GB), createdAt.
+     *
+     * @param string $datastoreId
+     * @param string $range Time range, e.g. '30d', '6m', '1y'. Default: '30d'
+     * @return array Array of rescale log entries
+     */
+    public function getRescaleLog(string $datastoreId, string $range = '30d'): array
+    {
+        if (!preg_match('/^\d+[dwms]$/', $range)) {
+            $range = '30d';
+        }
+        return $this->request('GET', '/reseller/datastore/' . $datastoreId . '/rescale-log?range=' . urlencode($range));
+    }
+
+    /**
      * Delete a datastore
      * @param string $datastoreId
      * @return array

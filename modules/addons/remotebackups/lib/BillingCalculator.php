@@ -2,7 +2,7 @@
 /**
  * Remote Backups Billing Calculator
  *
- * Calculates prorated billing based on size history.
+ * Calculates prorated billing from the API's rescale-log.
  * Uses the actual hours in the billing period for accurate calculations.
  *
  * @package    Remote Backups WHMCS Module
@@ -19,11 +19,17 @@ class BillingCalculator
 {
     /**
      * Calculate the billable amount for a datastore in a given period.
-     * 
+     *
+     * Uses the API's rescale-log entries instead of a local database table.
+     * Each rescale-log entry has: from (GB), to (GB), createdAt (ISO 8601).
+     *
      * IMPORTANT: Billing is based on PROVISIONED size, not used space.
      * Even an empty datastore is billed at its full provisioned size.
      *
      * @param string $datastoreId The datastore ID
+     * @param array $rescaleLog Array of rescale-log entries from the API (newest first)
+     * @param int $currentSizeGB Current datastore size from getDatastore()
+     * @param string $datastoreCreatedAt Datastore creation timestamp (ISO 8601)
      * @param \DateTime $periodStart Start of billing period
      * @param \DateTime $periodEnd End of billing period
      * @param float $pricePerThousandGB Monthly price per 1000 GB
@@ -31,83 +37,108 @@ class BillingCalculator
      */
     public static function calculate(
         string $datastoreId,
+        array $rescaleLog,
+        int $currentSizeGB,
+        string $datastoreCreatedAt,
         \DateTime $periodStart,
         \DateTime $periodEnd,
         float $pricePerThousandGB
     ): array {
-        // Get all size records for this datastore, ordered by time
-        $sizeHistory = Capsule::table('mod_remotebackups_size_history')
-            ->where('datastore_id', $datastoreId)
-            ->where('recorded_at', '<=', $periodEnd->format('Y-m-d H:i:s'))
-            ->orderBy('recorded_at', 'asc')
-            ->get();
+        // Total hours in the billing period
+        $totalHours = ($periodEnd->getTimestamp() - $periodStart->getTimestamp()) / 3600;
 
-        if ($sizeHistory->isEmpty()) {
+        if ($totalHours <= 0) {
             return [
                 'success' => false,
-                'error' => 'No size history found for datastore',
+                'error' => 'Invalid billing period',
                 'amount' => 0,
             ];
         }
 
-        // Calculate total hours in the billing period
-        $totalHours = ($periodEnd->getTimestamp() - $periodStart->getTimestamp()) / 3600;
+        // The rescale-log comes newest-first from the API, reverse it for chronological processing
+        $log = array_reverse($rescaleLog);
 
-        // Find the size at the start of the period (last record before periodStart)
-        $startingSize = null;
-        $startingRecord = null;
-        foreach ($sizeHistory as $record) {
-            $recordTime = new \DateTime($record->recorded_at);
-            if ($recordTime <= $periodStart) {
-                $startingSize = $record->size_gb;
-                $startingRecord = $recordTime;
-            } else {
-                break;
+        // Build a timeline of size changes from the rescale-log.
+        // Each entry records when the size changed and what it changed to.
+        // The initial size is the datastore's creation size.
+        $timeline = [];
+
+        // Determine initial size at creation:
+        // If there are rescale-log entries, the first entry's "from" field is the size before the first resize.
+        // If the log is empty, the datastore was never resized, so it has been at currentSizeGB since creation.
+        $createdAt = new \DateTime($datastoreCreatedAt);
+
+        if (!empty($log)) {
+            $initialSize = (int) $log[0]['from'];
+        } else {
+            $initialSize = $currentSizeGB;
+        }
+
+        // Start timeline at creation with initial size
+        $timeline[] = [
+            'time' => $createdAt,
+            'size_gb' => $initialSize,
+        ];
+
+        // Add each rescale event
+        foreach ($log as $entry) {
+            $timeline[] = [
+                'time' => new \DateTime($entry['createdAt']),
+                'size_gb' => (int) $entry['to'],
+            ];
+        }
+
+        // Build segments within the billing period
+        $segments = [];
+        $currentSize = null;
+        $currentStart = $periodStart;
+
+        // Find the size at the start of the period
+        foreach ($timeline as $event) {
+            if ($event['time'] <= $periodStart) {
+                $currentSize = $event['size_gb'];
             }
         }
 
-        // If no record before period start, use the first record
-        if ($startingSize === null && $sizeHistory->count() > 0) {
-            $firstRecord = $sizeHistory->first();
-            $startingSize = $firstRecord->size_gb;
-            $startingRecord = new \DateTime($firstRecord->recorded_at);
+        // If no event before period start, use initial size
+        if ($currentSize === null) {
+            $currentSize = $initialSize;
         }
 
-        // Build list of size segments within the period
-        $segments = [];
-        $currentSize = $startingSize;
-        $currentStart = $periodStart;
-
-        foreach ($sizeHistory as $record) {
-            $recordTime = new \DateTime($record->recorded_at);
-
-            // Skip records before the period
-            if ($recordTime <= $periodStart) {
-                $currentSize = $record->size_gb;
+        // Walk through timeline events within the period
+        foreach ($timeline as $event) {
+            // Skip events before or at the period start
+            if ($event['time'] <= $periodStart) {
+                $currentSize = $event['size_gb'];
                 continue;
             }
 
             // Stop at period end
-            if ($recordTime >= $periodEnd) {
+            if ($event['time'] >= $periodEnd) {
                 break;
             }
 
-            // This is a size change within the period
-            $segmentHours = ($recordTime->getTimestamp() - $currentStart->getTimestamp()) / 3600;
+            // Record segment from currentStart to this event
+            $segmentHours = ($event['time']->getTimestamp() - $currentStart->getTimestamp()) / 3600;
             if ($segmentHours > 0) {
                 $segments[] = [
                     'size_gb' => $currentSize,
                     'hours' => $segmentHours,
                     'from' => $currentStart->format('Y-m-d H:i:s'),
-                    'to' => $recordTime->format('Y-m-d H:i:s'),
+                    'to' => $event['time']->format('Y-m-d H:i:s'),
                 ];
             }
 
-            $currentSize = $record->size_gb;
-            $currentStart = $recordTime;
+            $currentSize = $event['size_gb'];
+            $currentStart = $event['time'];
+
+            // Stop after deletion — no further segments make sense
+            if ($event['size_gb'] === 0) {
+                break;
+            }
         }
 
-        // Add final segment until period end
+        // Final segment until period end
         $segmentHours = ($periodEnd->getTimestamp() - $currentStart->getTimestamp()) / 3600;
         if ($segmentHours > 0) {
             $segments[] = [
@@ -126,7 +157,6 @@ class BillingCalculator
 
         // Calculate billable amount
         // Formula: (GB-hours / total hours in period) * (price per 1000 GB / 1000)
-        // This gives the prorated monthly cost
         $averageGB = $totalHours > 0 ? $totalGBHours / $totalHours : 0;
         $pricePerGB = $pricePerThousandGB / 1000;
         $amount = $averageGB * $pricePerGB;
